@@ -1,0 +1,46 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.4'
+          cache: true
+
+      - name: Enable web
+        run: flutter config --no-enable-web
+
+      - name: Disable NDK (clean config)
+        run: flutter config --android-ndk ""
+        continue-on-error: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build APK (без NDK)
+        run: flutter build apk --split-per-abi
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: pulse-day-apk
+          path: build/app/outputs/flutter-apk/*.apk
