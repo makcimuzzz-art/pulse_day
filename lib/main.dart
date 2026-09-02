@@ -28,8 +28,8 @@ class _MainScreenState extends State<MainScreen> {
   bool _isLoading = true;
   String? _error;
 
-  // 🔥 IP-АДРЕС ИЗМЕНЕН НА 192.168.1.2
-  final String _serverUrl = "http://192.168.1.2:8000/api/daily";
+  // IP-АДРЕС ОБЛАЧНОГО СЕРВЕРА (Timeweb)
+  final String _serverUrl = "http://201.24.53.232:8000/api/daily";
 
   @override
   void initState() {
@@ -306,8 +306,8 @@ class _EditorialScreenState extends State<EditorialScreen> {
   bool _isLoading = true;
   String? _error;
 
-  // 🔥 IP-АДРЕС ИЗМЕНЕН НА 192.168.1.2
-  final String _editorialUrl = "http://192.168.1.2:8000/api/editorial";
+  // IP-АДРЕС ОБЛАЧНОГО СЕРВЕРА (Timeweb)
+  final String _editorialUrl = "http://201.24.53.232:8000/api/editorial";
 
   @override
   void initState() {
