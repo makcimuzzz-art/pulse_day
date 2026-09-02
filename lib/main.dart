@@ -28,8 +28,10 @@ class _MainScreenState extends State<MainScreen> {
   bool _isLoading = true;
   String? _error;
 
-  // IP-АДРЕС ОБЛАЧНОГО СЕРВЕРА (Timeweb)
-  final String _serverUrl = "http://201.24.53.232:8000/api/daily";
+  // 🔥 ПРАВИЛЬНЫЕ URL ДЛЯ FIREBASE (HTTPS)
+  final String _serverUrl = "https://pulse-day-default-rtdb.firebaseio.com/daily.json";
+  final String _newsUrl = "https://pulse-day-default-rtdb.firebaseio.com/daily.json";
+  final String _editorialUrl = "https://pulse-day-default-rtdb.firebaseio.com/editorial.json";
 
   @override
   void initState() {
@@ -306,8 +308,8 @@ class _EditorialScreenState extends State<EditorialScreen> {
   bool _isLoading = true;
   String? _error;
 
-  // IP-АДРЕС ОБЛАЧНОГО СЕРВЕРА (Timeweb)
-  final String _editorialUrl = "http://201.24.53.232:8000/api/editorial";
+  // 🔥 ПРАВИЛЬНЫЙ URL ДЛЯ FIREBASE (HTTPS)
+  final String _editorialUrl = "https://pulse-day-default-rtdb.firebaseio.com/editorial.json";
 
   @override
   void initState() {
