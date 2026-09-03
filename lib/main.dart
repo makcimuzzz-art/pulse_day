@@ -28,9 +28,9 @@ class _MainScreenState extends State<MainScreen> {
   bool _isLoading = true;
   String? _error;
 
-  // 🔥 АДРЕС DAILY.JSON (Wetter + News) - HTTPS, damit die App funktioniert!
-  final String _serverUrl = "https://pulse-day-default-rtdb.firebaseio.com/daily.json";
-  final String _editorialUrl = "https://pulse-day-default-rtdb.firebaseio.com/editorial.json";
+  // ПРЯМАЯ ССЫЛКА НА ТВОЙ СЕРВЕР (HTTP разрешен через манифест!)
+  final String _serverUrl = "http://201.24.53.232:8000/api/daily";
+  final String _editorialUrl = "http://201.24.53.232:8000/api/editorial";
 
   @override
   void initState() {
@@ -307,8 +307,7 @@ class _EditorialScreenState extends State<EditorialScreen> {
   bool _isLoading = true;
   String? _error;
 
-  // 🔥 АДРЕС EDITORIAL.JSON - HTTPS, damit die App funktioniert!
-  final String _editorialUrl = "https://pulse-day-default-rtdb.firebaseio.com/editorial.json";
+  final String _editorialUrl = "http://201.24.53.232:8000/api/editorial";
 
   @override
   void initState() {
