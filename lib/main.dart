@@ -28,9 +28,8 @@ class _MainScreenState extends State<MainScreen> {
   bool _isLoading = true;
   String? _error;
 
-  // 🔥 ПРАВИЛЬНЫЕ URL ДЛЯ FIREBASE (HTTPS)
-  final String _serverUrl = "https://pulse-day-default-rtdb.firebaseio.com/daily.json";
-  final String _newsUrl = "https://pulse-day-default-rtdb.firebaseio.com/daily.json";
+  // 🔥 АДРЕС FIREBASE (HTTPS, с ним приложение точно подключится)
+  final String _serverUrl = "https://pulse-day-default-rtdb.firebaseio.com/news.json";
   final String _editorialUrl = "https://pulse-day-default-rtdb.firebaseio.com/editorial.json";
 
   @override
@@ -308,7 +307,7 @@ class _EditorialScreenState extends State<EditorialScreen> {
   bool _isLoading = true;
   String? _error;
 
-  // 🔥 ПРАВИЛЬНЫЙ URL ДЛЯ FIREBASE (HTTPS)
+  // 🔥 АДРЕС FIREBASE (HTTPS, с ним приложение точно подключится)
   final String _editorialUrl = "https://pulse-day-default-rtdb.firebaseio.com/editorial.json";
 
   @override
