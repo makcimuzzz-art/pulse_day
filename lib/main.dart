@@ -26,10 +26,13 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> {
   Map<String, dynamic>? _dailyData;
+  List<dynamic> _allNews = [];
   bool _isLoading = true;
   String? _error;
 
+  // Прямая ссылка на сервер (HTTP разрешен)
   final String _serverUrl = "http://201.24.53.232:8000/api/daily";
+  final String _allNewsUrl = "http://201.24.53.232:8000/api/daily";
   final String _editorialUrl = "http://201.24.53.232:8000/api/editorial";
 
   @override
@@ -45,6 +48,7 @@ class _MainScreenState extends State<MainScreen> {
       if (response.statusCode == 200) {
         setState(() {
           _dailyData = json.decode(response.body);
+          _allNews = _dailyData?['news'] ?? [];
           _isLoading = false;
         });
       } else {
@@ -90,7 +94,7 @@ class _MainScreenState extends State<MainScreen> {
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (_) => NewsListScreen(news: _dailyData?['news'] ?? []),
+                builder: (_) => NewsListScreen(news: _allNews),
               ),
             );
           } else if (index == 2) {
@@ -119,14 +123,14 @@ class _MainScreenState extends State<MainScreen> {
             const SizedBox(height: 16),
             const Text('Главные новости', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
-            ...news.take(3).map((item) => _buildNewsCard(item)),
+            ...news.take(4).map((item) => _buildNewsCard(item)),
             Center(
               child: TextButton.icon(
                 onPressed: () {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => NewsListScreen(news: news),
+                      builder: (_) => NewsListScreen(news: _allNews),
                     ),
                   );
                 },
