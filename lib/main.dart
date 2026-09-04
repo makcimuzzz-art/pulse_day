@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:url_launcher/url_launcher.dart';
 
 void main() => runApp(PulseApp());
 
@@ -28,7 +29,6 @@ class _MainScreenState extends State<MainScreen> {
   bool _isLoading = true;
   String? _error;
 
-  // ПРЯМАЯ ССЫЛКА НА ТВОЙ СЕРВЕР (HTTP разрешен через манифест!)
   final String _serverUrl = "http://201.24.53.232:8000/api/daily";
   final String _editorialUrl = "http://201.24.53.232:8000/api/editorial";
 
@@ -196,7 +196,7 @@ class _MainScreenState extends State<MainScreen> {
             const SizedBox(height: 4),
             Text(
               news['description'] ?? '',
-              maxLines: 2,
+              maxLines: 4,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontSize: 12, color: Colors.grey),
             ),
@@ -224,21 +224,29 @@ class _MainScreenState extends State<MainScreen> {
           children: [
             Text(news['title'] ?? 'Новость', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
-            Text(news['description'] ?? 'Описание отсутствует'),
+            Text(news['description'] ?? 'Описание отсутствует', style: const TextStyle(fontSize: 16, height: 1.5)),
             const SizedBox(height: 16),
-            Row(
-              children: [
-                const Icon(Icons.link, size: 16, color: Colors.blue),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    news['link'] ?? '',
-                    style: const TextStyle(color: Colors.blue, fontSize: 14),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
+            InkWell(
+              onTap: () async {
+                final url = news['link'] ?? '';
+                if (await canLaunchUrl(Uri.parse(url))) {
+                  await launchUrl(Uri.parse(url));
+                }
+              },
+              child: Row(
+                children: [
+                  const Icon(Icons.link, size: 16, color: Colors.blue),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      news['link'] ?? '',
+                      style: const TextStyle(color: Colors.blue, fontSize: 14, decoration: TextDecoration.underline),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
             const Spacer(),
             ElevatedButton.icon(
@@ -278,7 +286,7 @@ class NewsListScreen extends StatelessWidget {
                         const SizedBox(height: 4),
                         Text(
                           item['description'] ?? '',
-                          maxLines: 2,
+                          maxLines: 4,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(fontSize: 12, color: Colors.grey),
                         ),
@@ -289,10 +297,59 @@ class NewsListScreen extends StatelessWidget {
                         ),
                       ],
                     ),
+                    onTap: () {
+                      _showNewsDetail(context, item);
+                    },
                   ),
                 );
               },
             ),
+    );
+  }
+
+  void _showNewsDetail(BuildContext context, Map<String, dynamic> news) {
+    showModalBottomSheet(
+      context: context,
+      builder: (_) => Container(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(news['title'] ?? 'Новость', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            Text(news['description'] ?? 'Описание отсутствует', style: const TextStyle(fontSize: 16, height: 1.5)),
+            const SizedBox(height: 16),
+            InkWell(
+              onTap: () async {
+                final url = news['link'] ?? '';
+                if (await canLaunchUrl(Uri.parse(url))) {
+                  await launchUrl(Uri.parse(url));
+                }
+              },
+              child: Row(
+                children: [
+                  const Icon(Icons.link, size: 16, color: Colors.blue),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      news['link'] ?? '',
+                      style: const TextStyle(color: Colors.blue, fontSize: 14, decoration: TextDecoration.underline),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Spacer(),
+            ElevatedButton.icon(
+              onPressed: () => Navigator.pop(context),
+              icon: const Icon(Icons.close),
+              label: const Text('Закрыть'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

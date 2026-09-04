@@ -11,6 +11,8 @@ dependencies:
     sdk: flutter
   cupertino_icons: ^1.0.8
   http: ^1.1.0
+  # 🔥 ЭТА СТРОЧКА НУЖНА, ЧТОБЫ ОТКРЫВАТЬ ССЫЛКИ В БРАУЗЕРЕ!
+  url_launcher: ^6.2.5
 
 dev_dependencies:
   flutter_test:
