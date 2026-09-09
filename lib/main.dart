@@ -9,7 +9,7 @@ class PulseApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Пульс.День',
+      title: 'ДИС',
       theme: ThemeData(
         primarySwatch: Colors.blue,
         brightness: Brightness.light,
@@ -69,7 +69,7 @@ class _MainScreenState extends State<MainScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Пульс.День'),
+        title: const Text('ДИС'),
         centerTitle: true,
         elevation: 0,
         actions: [
@@ -230,27 +230,24 @@ class _MainScreenState extends State<MainScreen> {
             const SizedBox(height: 8),
             Text(news['description'] ?? 'Описание отсутствует', style: const TextStyle(fontSize: 16, height: 1.5)),
             const SizedBox(height: 16),
-            InkWell(
-              onTap: () async {
-                final url = news['link'] ?? '';
-                if (await canLaunchUrl(Uri.parse(url))) {
-                  await launchUrl(Uri.parse(url));
-                }
-              },
-              child: Row(
-                children: [
-                  const Icon(Icons.link, size: 16, color: Colors.blue),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      news['link'] ?? '',
-                      style: const TextStyle(color: Colors.blue, fontSize: 14, decoration: TextDecoration.underline),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+            Row(
+              children: [
+                const Icon(Icons.link, size: 16, color: Colors.blue),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: SelectableText(
+                    news['link'] ?? '',
+                    style: const TextStyle(color: Colors.blue, fontSize: 14, decoration: TextDecoration.underline),
+                    onTap: () async {
+                      final url = news['link'] ?? '';
+                      await launchUrl(
+                        Uri.parse(url),
+                        mode: LaunchMode.externalApplication,
+                      );
+                    },
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
             const Spacer(),
             ElevatedButton.icon(
@@ -323,27 +320,24 @@ class NewsListScreen extends StatelessWidget {
             const SizedBox(height: 8),
             Text(news['description'] ?? 'Описание отсутствует', style: const TextStyle(fontSize: 16, height: 1.5)),
             const SizedBox(height: 16),
-            InkWell(
-              onTap: () async {
-                final url = news['link'] ?? '';
-                if (await canLaunchUrl(Uri.parse(url))) {
-                  await launchUrl(Uri.parse(url));
-                }
-              },
-              child: Row(
-                children: [
-                  const Icon(Icons.link, size: 16, color: Colors.blue),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      news['link'] ?? '',
-                      style: const TextStyle(color: Colors.blue, fontSize: 14, decoration: TextDecoration.underline),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+            Row(
+              children: [
+                const Icon(Icons.link, size: 16, color: Colors.blue),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: SelectableText(
+                    news['link'] ?? '',
+                    style: const TextStyle(color: Colors.blue, fontSize: 14, decoration: TextDecoration.underline),
+                    onTap: () async {
+                      final url = news['link'] ?? '';
+                      await launchUrl(
+                        Uri.parse(url),
+                        mode: LaunchMode.externalApplication,
+                      );
+                    },
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
             const Spacer(),
             ElevatedButton.icon(
