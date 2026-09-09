@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() => runApp(PulseApp());
 
@@ -9,12 +10,84 @@ class PulseApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'ДИС',
+      title: 'ДИС.Новости',
       theme: ThemeData(
         primarySwatch: Colors.blue,
         brightness: Brightness.light,
       ),
-      home: MainScreen(),
+      home: CategorySelectionScreen(), // Первый экран - выбор категорий!
+    );
+  }
+}
+
+class CategorySelectionScreen extends StatefulWidget {
+  @override
+  _CategorySelectionScreenState createState() => _CategorySelectionScreenState();
+}
+
+class _CategorySelectionScreenState extends State<CategorySelectionScreen> {
+  final Set<String> _selectedCategories = {};
+
+  final List<String> _categories = [
+    'Экономика', 'Технологии', 'Здоровье', 'Спорт', 'Политика', 'Культура', 'Развлечения'
+  ];
+
+  // Если выбрано меньше 3 категорий, мы не пропускаем дальше
+  bool get _isValid => _selectedCategories.length >= 3;
+
+  void _saveCategories() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('selected_categories', _selectedCategories.toList());
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => MainScreen()),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('ДИС.Новости'),
+        centerTitle: true,
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            const Text(
+              'Приветствуем в нашем приложении!\nПожалуйста, выберите 3 категории новостей, которые вас интересуют больше всего',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 20),
+            Expanded(
+              child: ListView(
+                children: _categories.map((category) {
+                  return CheckboxListTile(
+                    title: Text(category),
+                    value: _selectedCategories.contains(category),
+                    onChanged: (bool? value) {
+                      setState(() {
+                        if (value == true) {
+                          _selectedCategories.add(category);
+                        } else {
+                          _selectedCategories.remove(category);
+                        }
+                      });
+                    },
+                  );
+                }).toList(),
+              ),
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: _isValid ? _saveCategories : null,
+              child: const Text('Продолжить'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -35,6 +108,7 @@ class _MainScreenState extends State<MainScreen> {
   final String _allNewsUrl = "http://201.24.53.232:8000/api/daily";
   final String _editorialUrl = "http://201.24.53.232:8000/api/editorial";
 
+  // Мы всегда e-mail от einer "alten" Version ab
   @override
   void initState() {
     super.initState();
@@ -69,7 +143,7 @@ class _MainScreenState extends State<MainScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('ДИС'),
+        title: const Text('ДИС.Новости'),
         centerTitle: true,
         elevation: 0,
         actions: [
