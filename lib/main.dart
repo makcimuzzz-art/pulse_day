@@ -20,7 +20,7 @@ class PulseApp extends StatelessWidget {
   }
 }
 
-// ============= SPLASH SCREEN (проверяет, есть ли категории) =============
+// ============= SPLASH SCREEN =============
 class SplashScreen extends StatefulWidget {
   @override
   _SplashScreenState createState() => _SplashScreenState();
@@ -136,6 +136,7 @@ class _MainScreenState extends State<MainScreen> {
   List<dynamic> _digestNews = [];
   List<String> _userCategories = [];
   bool _isLoading = true;
+  bool _isDigestExpanded = false;
   String? _error;
 
   final String _serverUrl = "http://201.24.53.232:8000/api/daily";
@@ -160,7 +161,7 @@ class _MainScreenState extends State<MainScreen> {
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         final allNews = data['news'] ?? [];
-        
+
         // Формируем персональный дайджест: по 1 новости из каждой выбранной категории
         List<dynamic> digest = [];
         for (var cat in _userCategories) {
@@ -170,7 +171,7 @@ class _MainScreenState extends State<MainScreen> {
           );
           if (found != null) digest.add(found);
         }
-        
+
         setState(() {
           _dailyData = data;
           _allNews = allNews;
@@ -217,10 +218,10 @@ class _MainScreenState extends State<MainScreen> {
         onTap: (index) {
           if (index == 1) {
             Navigator.push(context,
-              MaterialPageRoute(builder: (_) => NewsListScreen(news: _allNews)));
+                MaterialPageRoute(builder: (_) => NewsListScreen(news: _allNews)));
           } else if (index == 2) {
             Navigator.push(context,
-              MaterialPageRoute(builder: (_) => EditorialScreen()));
+                MaterialPageRoute(builder: (_) => EditorialScreen()));
           }
         },
       ),
@@ -239,7 +240,6 @@ class _MainScreenState extends State<MainScreen> {
           children: [
             _buildWeatherCard(weather),
             const SizedBox(height: 16),
-            // ===== РАЗДЕЛ ПЕРСОНАЛЬНОГО ДАЙДЖЕСТА =====
             _buildDigestSection(),
           ],
         ),
@@ -261,24 +261,42 @@ class _MainScreenState extends State<MainScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Row(
-              children: [
-                const Icon(Icons.auto_awesome, color: Colors.white, size: 28),
-                const SizedBox(width: 10),
-                const Expanded(
-                  child: Text(
-                    'Ваш персональный дайджест готов',
-                    style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+          InkWell(
+            onTap: () {
+              setState(() {
+                _isDigestExpanded = !_isDigestExpanded;
+              });
+            },
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Row(
+                children: [
+                  const Icon(Icons.auto_awesome, color: Colors.white, size: 28),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Text(
+                      'Ваш персональный дайджест готов',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ),
-                ),
-                const Icon(Icons.keyboard_arrow_down, color: Colors.white),
-              ],
+                  Icon(
+                    _isDigestExpanded
+                        ? Icons.keyboard_arrow_up
+                        : Icons.keyboard_arrow_down,
+                    color: Colors.white,
+                  ),
+                ],
+              ),
             ),
           ),
-          ..._digestNews.map((news) => _buildDigestCard(news)),
-          const SizedBox(height: 8),
+          if (_isDigestExpanded) ...[
+            ..._digestNews.map((news) => _buildDigestCard(news)),
+            const SizedBox(height: 8),
+          ],
         ],
       ),
     );
@@ -399,11 +417,11 @@ class NewsListScreen extends StatelessWidget {
                       children: [
                         const SizedBox(height: 4),
                         Text(item['description'] ?? '',
-                          maxLines: 4, overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                            maxLines: 4, overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 12, color: Colors.grey)),
                         const SizedBox(height: 4),
                         Text('Категория: ${item['category'] ?? 'Другое'}',
-                          style: const TextStyle(fontSize: 10, color: Colors.blue)),
+                            style: const TextStyle(fontSize: 10, color: Colors.blue)),
                       ],
                     ),
                     onTap: () => _showNewsDetail(context, item),
@@ -492,7 +510,7 @@ class _EditorialScreenState extends State<EditorialScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Редакция Пульс'), centerTitle: true),
+      appBar: AppBar(title: const Text('Редакция ДИС'), centerTitle: true),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
@@ -513,11 +531,11 @@ class _EditorialScreenState extends State<EditorialScreen> {
                               children: [
                                 const SizedBox(height: 4),
                                 Text(article['short_description'] ?? '',
-                                  maxLines: 2, overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                                    maxLines: 2, overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(fontSize: 12, color: Colors.grey)),
                                 const SizedBox(height: 4),
                                 Text(article['date'] ?? '',
-                                  style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                                    style: const TextStyle(fontSize: 10, color: Colors.grey)),
                               ],
                             ),
                             onTap: () => _showFullArticle(context, article),
@@ -546,7 +564,7 @@ class _EditorialScreenState extends State<EditorialScreen> {
               children: [
                 Text(article['title'] ?? 'Статья', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
-                Text('${article['author'] ?? 'Редакция Пульс'} • ${article['date'] ?? ''}'),
+                Text('${article['author'] ?? 'Редакция ДИС'} • ${article['date'] ?? ''}'),
                 const Divider(),
                 const SizedBox(height: 8),
                 Text(article['full_text'] ?? 'Текст отсутствует', style: const TextStyle(fontSize: 16, height: 1.6)),
