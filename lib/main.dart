@@ -15,11 +15,50 @@ class PulseApp extends StatelessWidget {
         primarySwatch: Colors.blue,
         brightness: Brightness.light,
       ),
-      home: CategorySelectionScreen(), // Первый экран - выбор категорий!
+      home: SplashScreen(),
     );
   }
 }
 
+// ============= SPLASH SCREEN (проверяет, есть ли категории) =============
+class SplashScreen extends StatefulWidget {
+  @override
+  _SplashScreenState createState() => _SplashScreenState();
+}
+
+class _SplashScreenState extends State<SplashScreen> {
+  @override
+  void initState() {
+    super.initState();
+    _checkCategories();
+  }
+
+  Future<void> _checkCategories() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    List<String>? savedCategories = prefs.getStringList('selected_categories');
+
+    if (savedCategories != null && savedCategories.isNotEmpty) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => MainScreen()),
+      );
+    } else {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => CategorySelectionScreen()),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      body: Center(child: CircularProgressIndicator()),
+    );
+  }
+}
+
+// ============= ЭКРАН ВЫБОРА КАТЕГОРИЙ =============
 class CategorySelectionScreen extends StatefulWidget {
   @override
   _CategorySelectionScreenState createState() => _CategorySelectionScreenState();
@@ -27,13 +66,9 @@ class CategorySelectionScreen extends StatefulWidget {
 
 class _CategorySelectionScreenState extends State<CategorySelectionScreen> {
   final Set<String> _selectedCategories = {};
-
   final List<String> _categories = [
     'Экономика', 'Технологии', 'Здоровье', 'Спорт', 'Политика', 'Культура', 'Развлечения'
   ];
-
-  // Если выбрано меньше 3 категорий, мы не пропускаем дальше
-  bool get _isValid => _selectedCategories.length >= 3;
 
   void _saveCategories() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
@@ -47,16 +82,13 @@ class _CategorySelectionScreenState extends State<CategorySelectionScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('ДИС.Новости'),
-        centerTitle: true,
-      ),
+      appBar: AppBar(title: const Text('ДИС.Новости'), centerTitle: true),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           children: [
             const Text(
-              'Приветствуем в нашем приложении!\nПожалуйста, выберите 3 категории новостей, которые вас интересуют больше всего',
+              'Приветствуем в ДИС.Новости!\nПожалуйста, выберите 3 категории новостей, которые вас интересуют больше всего.',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
@@ -82,7 +114,7 @@ class _CategorySelectionScreenState extends State<CategorySelectionScreen> {
             ),
             const SizedBox(height: 20),
             ElevatedButton(
-              onPressed: _isValid ? _saveCategories : null,
+              onPressed: _selectedCategories.length >= 3 ? _saveCategories : null,
               child: const Text('Продолжить'),
             ),
           ],
@@ -92,6 +124,7 @@ class _CategorySelectionScreenState extends State<CategorySelectionScreen> {
   }
 }
 
+// ============= ГЛАВНЫЙ ЭКРАН =============
 class MainScreen extends StatefulWidget {
   @override
   _MainScreenState createState() => _MainScreenState();
@@ -100,19 +133,24 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   Map<String, dynamic>? _dailyData;
   List<dynamic> _allNews = [];
+  List<dynamic> _digestNews = [];
+  List<String> _userCategories = [];
   bool _isLoading = true;
   String? _error;
 
-  // Прямая ссылка на сервер (HTTP разрешен)
   final String _serverUrl = "http://201.24.53.232:8000/api/daily";
-  final String _allNewsUrl = "http://201.24.53.232:8000/api/daily";
   final String _editorialUrl = "http://201.24.53.232:8000/api/editorial";
 
-  // Мы всегда e-mail от einer "alten" Version ab
   @override
   void initState() {
     super.initState();
-    _fetchData();
+    _loadCategoriesAndData();
+  }
+
+  Future<void> _loadCategoriesAndData() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    _userCategories = prefs.getStringList('selected_categories') ?? [];
+    await _fetchData();
   }
 
   Future<void> _fetchData() async {
@@ -120,9 +158,23 @@ class _MainScreenState extends State<MainScreen> {
       setState(() => _isLoading = true);
       final response = await http.get(Uri.parse(_serverUrl));
       if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final allNews = data['news'] ?? [];
+        
+        // Формируем персональный дайджест: по 1 новости из каждой выбранной категории
+        List<dynamic> digest = [];
+        for (var cat in _userCategories) {
+          final found = allNews.firstWhere(
+            (n) => n['category'] == cat,
+            orElse: () => null,
+          );
+          if (found != null) digest.add(found);
+        }
+        
         setState(() {
-          _dailyData = json.decode(response.body);
-          _allNews = _dailyData?['news'] ?? [];
+          _dailyData = data;
+          _allNews = allNews;
+          _digestNews = digest;
           _isLoading = false;
         });
       } else {
@@ -145,7 +197,6 @@ class _MainScreenState extends State<MainScreen> {
       appBar: AppBar(
         title: const Text('ДИС.Новости'),
         centerTitle: true,
-        elevation: 0,
         actions: [
           IconButton(icon: const Icon(Icons.refresh), onPressed: _fetchData),
         ],
@@ -165,17 +216,11 @@ class _MainScreenState extends State<MainScreen> {
         ],
         onTap: (index) {
           if (index == 1) {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => NewsListScreen(news: _allNews),
-              ),
-            );
+            Navigator.push(context,
+              MaterialPageRoute(builder: (_) => NewsListScreen(news: _allNews)));
           } else if (index == 2) {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => EditorialScreen()),
-            );
+            Navigator.push(context,
+              MaterialPageRoute(builder: (_) => EditorialScreen()));
           }
         },
       ),
@@ -184,7 +229,6 @@ class _MainScreenState extends State<MainScreen> {
 
   Widget _buildContent() {
     final weather = _dailyData!['weather'] ?? {};
-    final news = _dailyData!['news'] ?? [];
 
     return RefreshIndicator(
       onRefresh: _fetchData,
@@ -195,25 +239,94 @@ class _MainScreenState extends State<MainScreen> {
           children: [
             _buildWeatherCard(weather),
             const SizedBox(height: 16),
-            const Text('Главные новости', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            ...news.take(4).map((item) => _buildNewsCard(item)),
-            Center(
-              child: TextButton.icon(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => NewsListScreen(news: _allNews),
-                    ),
-                  );
-                },
-                icon: const Icon(Icons.arrow_forward),
-                label: const Text('Все новости'),
-              ),
-            ),
+            // ===== РАЗДЕЛ ПЕРСОНАЛЬНОГО ДАЙДЖЕСТА =====
+            _buildDigestSection(),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildDigestSection() {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.deepPurple.shade400, Colors.deepPurple.shade700],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: const [BoxShadow(blurRadius: 8, offset: Offset(0, 4))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Row(
+              children: [
+                const Icon(Icons.auto_awesome, color: Colors.white, size: 28),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Text(
+                    'Ваш персональный дайджест готов',
+                    style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                ),
+                const Icon(Icons.keyboard_arrow_down, color: Colors.white),
+              ],
+            ),
+          ),
+          ..._digestNews.map((news) => _buildDigestCard(news)),
+          const SizedBox(height: 8),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDigestCard(Map<String, dynamic> news) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            news['category'] ?? '',
+            style: const TextStyle(color: Colors.deepPurple, fontSize: 12, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            news['title'] ?? 'Без названия',
+            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            news['description'] ?? '',
+            style: const TextStyle(fontSize: 12, color: Colors.grey),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 6),
+          InkWell(
+            onTap: () async {
+              final url = news['link'] ?? '';
+              if (url.isNotEmpty) {
+                await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+              }
+            },
+            child: const Text(
+              'Читать источник →',
+              style: TextStyle(color: Colors.blue, fontSize: 12, decoration: TextDecoration.underline),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -228,7 +341,6 @@ class _MainScreenState extends State<MainScreen> {
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(16),
-        boxShadow: const [BoxShadow(blurRadius: 8, offset: Offset(0, 4))],
       ),
       child: Row(
         children: [
@@ -260,82 +372,9 @@ class _MainScreenState extends State<MainScreen> {
       ),
     );
   }
-
-  Widget _buildNewsCard(Map<String, dynamic> news) {
-    return Card(
-      margin: const EdgeInsets.symmetric(vertical: 8),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: ListTile(
-        contentPadding: const EdgeInsets.all(12),
-        title: Text(news['title'] ?? 'Без названия', maxLines: 2, overflow: TextOverflow.ellipsis),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 4),
-            Text(
-              news['description'] ?? '',
-              maxLines: 4,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 12, color: Colors.grey),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Источник: ${news['source'] ?? 'неизвестен'}',
-              style: const TextStyle(fontSize: 10, color: Colors.blue),
-            ),
-          ],
-        ),
-        onTap: () {
-          _showNewsDetail(context, news);
-        },
-      ),
-    );
-  }
-
-  void _showNewsDetail(BuildContext context, Map<String, dynamic> news) {
-    showModalBottomSheet(
-      context: context,
-      builder: (_) => Container(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(news['title'] ?? 'Новость', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            Text(news['description'] ?? 'Описание отсутствует', style: const TextStyle(fontSize: 16, height: 1.5)),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                const Icon(Icons.link, size: 16, color: Colors.blue),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: SelectableText(
-                    news['link'] ?? '',
-                    style: const TextStyle(color: Colors.blue, fontSize: 14, decoration: TextDecoration.underline),
-                    onTap: () async {
-                      final url = news['link'] ?? '';
-                      await launchUrl(
-                        Uri.parse(url),
-                        mode: LaunchMode.externalApplication,
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-            const Spacer(),
-            ElevatedButton.icon(
-              onPressed: () => Navigator.pop(context),
-              icon: const Icon(Icons.close),
-              label: const Text('Закрыть'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
+// ============= ЭКРАН ВСЕХ НОВОСТЕЙ =============
 class NewsListScreen extends StatelessWidget {
   final List<dynamic> news;
   const NewsListScreen({Key? key, required this.news}) : super(key: key);
@@ -359,22 +398,15 @@ class NewsListScreen extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const SizedBox(height: 4),
-                        Text(
-                          item['description'] ?? '',
-                          maxLines: 4,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 12, color: Colors.grey),
-                        ),
+                        Text(item['description'] ?? '',
+                          maxLines: 4, overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 12, color: Colors.grey)),
                         const SizedBox(height: 4),
-                        Text(
-                          'Категория: ${item['category'] ?? 'Другое'}',
-                          style: const TextStyle(fontSize: 10, color: Colors.blue),
-                        ),
+                        Text('Категория: ${item['category'] ?? 'Другое'}',
+                          style: const TextStyle(fontSize: 10, color: Colors.blue)),
                       ],
                     ),
-                    onTap: () {
-                      _showNewsDetail(context, item);
-                    },
+                    onTap: () => _showNewsDetail(context, item),
                   ),
                 );
               },
@@ -394,26 +426,15 @@ class NewsListScreen extends StatelessWidget {
             const SizedBox(height: 8),
             Text(news['description'] ?? 'Описание отсутствует', style: const TextStyle(fontSize: 16, height: 1.5)),
             const SizedBox(height: 16),
-            Row(
-              children: [
-                const Icon(Icons.link, size: 16, color: Colors.blue),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: SelectableText(
-                    news['link'] ?? '',
-                    style: const TextStyle(color: Colors.blue, fontSize: 14, decoration: TextDecoration.underline),
-                    onTap: () async {
-                      final url = news['link'] ?? '';
-                      await launchUrl(
-                        Uri.parse(url),
-                        mode: LaunchMode.externalApplication,
-                      );
-                    },
-                  ),
-                ),
-              ],
+            SelectableText(
+              news['link'] ?? '',
+              style: const TextStyle(color: Colors.blue, fontSize: 14, decoration: TextDecoration.underline),
+              onTap: () async {
+                final url = news['link'] ?? '';
+                await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+              },
             ),
-            const Spacer(),
+            const SizedBox(height: 20),
             ElevatedButton.icon(
               onPressed: () => Navigator.pop(context),
               icon: const Icon(Icons.close),
@@ -426,6 +447,7 @@ class NewsListScreen extends StatelessWidget {
   }
 }
 
+// ============= ЭКРАН РЕДАКЦИИ =============
 class EditorialScreen extends StatefulWidget {
   @override
   _EditorialScreenState createState() => _EditorialScreenState();
@@ -446,7 +468,6 @@ class _EditorialScreenState extends State<EditorialScreen> {
 
   Future<void> _fetchEditorial() async {
     try {
-      setState(() => _isLoading = true);
       final response = await http.get(Uri.parse(_editorialUrl));
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
@@ -491,22 +512,15 @@ class _EditorialScreenState extends State<EditorialScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 const SizedBox(height: 4),
-                                Text(
-                                  article['short_description'] ?? '',
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(fontSize: 12, color: Colors.grey),
-                                ),
+                                Text(article['short_description'] ?? '',
+                                  maxLines: 2, overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontSize: 12, color: Colors.grey)),
                                 const SizedBox(height: 4),
-                                Text(
-                                  article['date'] ?? '',
-                                  style: const TextStyle(fontSize: 10, color: Colors.grey),
-                                ),
+                                Text(article['date'] ?? '',
+                                  style: const TextStyle(fontSize: 10, color: Colors.grey)),
                               ],
                             ),
-                            onTap: () {
-                              _showFullArticle(context, article);
-                            },
+                            onTap: () => _showFullArticle(context, article),
                           ),
                         );
                       },
