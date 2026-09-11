@@ -11,10 +11,7 @@ class PulseApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'ДИС.Новости',
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-        brightness: Brightness.light,
-      ),
+      theme: ThemeData(primarySwatch: Colors.blue, brightness: Brightness.light),
       home: SplashScreen(),
     );
   }
@@ -30,31 +27,24 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    _checkCategories();
+    _checkPrefs();
   }
 
-  Future<void> _checkCategories() async {
+  Future<void> _checkPrefs() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     List<String>? savedCategories = prefs.getStringList('selected_categories');
+    String? savedRegion = prefs.getString('selected_region');
 
-    if (savedCategories != null && savedCategories.isNotEmpty) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => MainScreen()),
-      );
+    if (savedCategories != null && savedCategories.isNotEmpty && savedRegion != null) {
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => MainScreen()));
     } else {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => CategorySelectionScreen()),
-      );
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => CategorySelectionScreen()));
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
-      body: Center(child: CircularProgressIndicator()),
-    );
+    return const Scaffold(body: Center(child: CircularProgressIndicator()));
   }
 }
 
@@ -66,18 +56,14 @@ class CategorySelectionScreen extends StatefulWidget {
 
 class _CategorySelectionScreenState extends State<CategorySelectionScreen> {
   final Set<String> _selectedCategories = {};
-  // Категория "Развлечения" убрана!
   final List<String> _categories = [
     'Экономика', 'Технологии', 'Здоровье', 'Спорт', 'Политика', 'Культура'
   ];
 
-  void _saveCategories() async {
+  void _saveAndGoToRegion() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.setStringList('selected_categories', _selectedCategories.toList());
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (_) => MainScreen()),
-    );
+    Navigator.push(context, MaterialPageRoute(builder: (_) => RegionSelectionScreen()));
   }
 
   @override
@@ -89,7 +75,7 @@ class _CategorySelectionScreenState extends State<CategorySelectionScreen> {
         child: Column(
           children: [
             const Text(
-              'Приветствуем в ДИС.Новости!\nПожалуйста, выберите 3 категории новостей, которые вас интересуют больше всего.',
+              'Шаг 1 из 2\nВыберите 3 категории новостей, которые вас интересуют больше всего.',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
@@ -113,9 +99,83 @@ class _CategorySelectionScreenState extends State<CategorySelectionScreen> {
                 }).toList(),
               ),
             ),
-            const SizedBox(height: 20),
             ElevatedButton(
-              onPressed: _selectedCategories.length >= 3 ? _saveCategories : null,
+              onPressed: _selectedCategories.length >= 3 ? _saveAndGoToRegion : null,
+              child: const Text('Далее'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ============= ЭКРАН ВЫБОРА РЕГИОНА =============
+class RegionSelectionScreen extends StatefulWidget {
+  @override
+  _RegionSelectionScreenState createState() => _RegionSelectionScreenState();
+}
+
+class _RegionSelectionScreenState extends State<RegionSelectionScreen> {
+  String? _selectedRegion;
+
+  final List<String> _regions = [
+    'Москва',
+    'Санкт-Петербург',
+    'Рязань',
+    'Татарстан',
+    'Свердловская область',
+    'Новосибирская область',
+    'Тульская область',
+    'Владимирская область',
+    'Краснодарский край',
+    'Ростовская область',
+    'Нижегородская область',
+    'Самарская область',
+    'Челябинская область',
+    'Омская область',
+    'Воронежская область',
+    'Пермский край',
+    'Красноярский край',
+    'Приморский край'
+  ];
+
+  void _saveRegion() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setString('selected_region', _selectedRegion);
+    Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => MainScreen()));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('ДИС.Новости'), centerTitle: true),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            const Text(
+              'Шаг 2 из 2\nВыберите ваш регион, чтобы видеть местные новости.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 20),
+            Expanded(
+              child: ListView(
+                children: _regions.map((region) {
+                  return RadioListTile<String>(
+                    title: Text(region),
+                    value: region,
+                    groupValue: _selectedRegion,
+                    onChanged: (String? value) {
+                      setState(() => _selectedRegion = value);
+                    },
+                  );
+                }).toList(),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: _selectedRegion != null ? _saveRegion : null,
               child: const Text('Продолжить'),
             ),
           ],
@@ -135,23 +195,25 @@ class _MainScreenState extends State<MainScreen> {
   Map<String, dynamic>? _dailyData;
   List<dynamic> _allNews = [];
   List<dynamic> _digestNews = [];
+  List<dynamic> _regionalNews = [];
   List<String> _userCategories = [];
+  String _userRegion = '';
   bool _isLoading = true;
   bool _isDigestExpanded = false;
   String? _error;
 
   final String _serverUrl = "http://201.24.53.232:8000/api/daily";
-  final String _editorialUrl = "http://201.24.53.232:8000/api/editorial";
 
   @override
   void initState() {
     super.initState();
-    _loadCategoriesAndData();
+    _loadPrefsAndData();
   }
 
-  Future<void> _loadCategoriesAndData() async {
+  Future<void> _loadPrefsAndData() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     _userCategories = prefs.getStringList('selected_categories') ?? [];
+    _userRegion = prefs.getString('selected_region') ?? 'Москва';
     await _fetchData();
   }
 
@@ -163,20 +225,30 @@ class _MainScreenState extends State<MainScreen> {
         final data = json.decode(response.body);
         final allNews = data['news'] ?? [];
 
-        // Формируем персональный дайджест: по 1 новости из каждой выбранной категории
+        // Дайджест: по 1 новости из каждой выбранной категории
         List<dynamic> digest = [];
         for (var cat in _userCategories) {
-          final found = allNews.firstWhere(
-            (n) => n['category'] == cat,
-            orElse: () => null,
-          );
+          final found = allNews.firstWhere((n) => n['category'] == cat, orElse: () => null);
           if (found != null) digest.add(found);
         }
+        // Если дайджест меньше 3 — добираем из "Другое"
+        if (digest.length < 3) {
+          for (var n in allNews) {
+            if (!digest.contains(n) && n['category'] != 'Регион') {
+              digest.add(n);
+              if (digest.length >= 3) break;
+            }
+          }
+        }
+
+        // Региональные новости
+        final regional = allNews.where((n) => n['region'] == _userRegion).take(10).toList();
 
         setState(() {
           _dailyData = data;
           _allNews = allNews;
           _digestNews = digest;
+          _regionalNews = regional;
           _isLoading = false;
         });
       } else {
@@ -199,9 +271,7 @@ class _MainScreenState extends State<MainScreen> {
       appBar: AppBar(
         title: const Text('ДИС.Новости'),
         centerTitle: true,
-        actions: [
-          IconButton(icon: const Icon(Icons.refresh), onPressed: _fetchData),
-        ],
+        actions: [IconButton(icon: const Icon(Icons.refresh), onPressed: _fetchData)],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -218,11 +288,9 @@ class _MainScreenState extends State<MainScreen> {
         ],
         onTap: (index) {
           if (index == 1) {
-            Navigator.push(context,
-                MaterialPageRoute(builder: (_) => NewsListScreen(news: _allNews)));
+            Navigator.push(context, MaterialPageRoute(builder: (_) => NewsListScreen(news: _allNews)));
           } else if (index == 2) {
-            Navigator.push(context,
-                MaterialPageRoute(builder: (_) => EditorialScreen()));
+            Navigator.push(context, MaterialPageRoute(builder: (_) => EditorialScreen()));
           }
         },
       ),
@@ -231,7 +299,6 @@ class _MainScreenState extends State<MainScreen> {
 
   Widget _buildContent() {
     final weather = _dailyData!['weather'] ?? {};
-
     return RefreshIndicator(
       onRefresh: _fetchData,
       child: SingleChildScrollView(
@@ -242,17 +309,17 @@ class _MainScreenState extends State<MainScreen> {
             _buildWeatherCard(weather),
             const SizedBox(height: 16),
             _buildDigestSection(),
+            const SizedBox(height: 16),
+            _buildRegionalSection(),
           ],
         ),
       ),
     );
   }
 
-  // ===== ПОГОДА С РЕАЛЬНЫМИ ИКОНКАМИ =====
   Widget _buildWeatherCard(Map<String, dynamic> weather) {
     IconData weatherIcon = Icons.wb_sunny;
     String condition = weather['condition'] ?? '';
-
     if (condition.contains('Дождь') || condition.contains('Ливень') || condition.contains('Морось')) {
       weatherIcon = Icons.grain;
     } else if (condition.contains('Снег')) {
@@ -263,18 +330,11 @@ class _MainScreenState extends State<MainScreen> {
       weatherIcon = Icons.foggy;
     } else if (condition.contains('Облачно') || condition.contains('Малооблачно')) {
       weatherIcon = Icons.cloud_queue;
-    } else {
-      weatherIcon = Icons.wb_sunny;
     }
-
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Colors.blue.shade400, Colors.blue.shade700],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        gradient: LinearGradient(colors: [Colors.blue.shade400, Colors.blue.shade700], begin: Alignment.topLeft, end: Alignment.bottomRight),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
@@ -293,15 +353,10 @@ class _MainScreenState extends State<MainScreen> {
     );
   }
 
-  // ===== ПЕРСОНАЛЬНЫЙ ДАЙДЖЕСТ =====
   Widget _buildDigestSection() {
     return Container(
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Colors.deepPurple.shade400, Colors.deepPurple.shade700],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        gradient: LinearGradient(colors: [Colors.deepPurple.shade400, Colors.deepPurple.shade700], begin: Alignment.topLeft, end: Alignment.bottomRight),
         borderRadius: BorderRadius.circular(16),
         boxShadow: const [BoxShadow(blurRadius: 8, offset: Offset(0, 4))],
       ),
@@ -309,11 +364,7 @@ class _MainScreenState extends State<MainScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           InkWell(
-            onTap: () {
-              setState(() {
-                _isDigestExpanded = !_isDigestExpanded;
-              });
-            },
+            onTap: () => setState(() => _isDigestExpanded = !_isDigestExpanded),
             child: Padding(
               padding: const EdgeInsets.all(16.0),
               child: Row(
@@ -321,21 +372,10 @@ class _MainScreenState extends State<MainScreen> {
                   const Icon(Icons.auto_awesome, color: Colors.white, size: 28),
                   const SizedBox(width: 10),
                   const Expanded(
-                    child: Text(
-                      'Ваш персональный дайджест готов',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+                    child: Text('Ваш персональный дайджест готов',
+                      style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
                   ),
-                  Icon(
-                    _isDigestExpanded
-                        ? Icons.keyboard_arrow_up
-                        : Icons.keyboard_arrow_down,
-                    color: Colors.white,
-                  ),
+                  Icon(_isDigestExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down, color: Colors.white),
                 ],
               ),
             ),
@@ -353,45 +393,84 @@ class _MainScreenState extends State<MainScreen> {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-      ),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            news['category'] ?? '',
-            style: const TextStyle(color: Colors.deepPurple, fontSize: 12, fontWeight: FontWeight.bold),
-          ),
+          Text(news['category'] ?? '', style: const TextStyle(color: Colors.deepPurple, fontSize: 12, fontWeight: FontWeight.bold)),
           const SizedBox(height: 4),
-          Text(
-            news['title'] ?? 'Без названия',
-            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
+          Text(news['title'] ?? 'Без названия', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold), maxLines: 2, overflow: TextOverflow.ellipsis),
           const SizedBox(height: 4),
-          Text(
-            news['description'] ?? '',
-            style: const TextStyle(fontSize: 12, color: Colors.grey),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
+          Text(news['description'] ?? '', style: const TextStyle(fontSize: 12, color: Colors.grey), maxLines: 2, overflow: TextOverflow.ellipsis),
           const SizedBox(height: 6),
           InkWell(
             onTap: () async {
               final url = news['link'] ?? '';
-              if (url.isNotEmpty) {
-                await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-              }
+              if (url.isNotEmpty) await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
             },
-            child: const Text(
-              'Читать источник →',
-              style: TextStyle(color: Colors.blue, fontSize: 12, decoration: TextDecoration.underline),
-            ),
+            child: const Text('Читать источник →', style: TextStyle(color: Colors.blue, fontSize: 12, decoration: TextDecoration.underline)),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildRegionalSection() {
+    if (_regionalNews.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Новости вашего региона: $_userRegion',
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 8),
+        ..._regionalNews.map((news) => Card(
+          margin: const EdgeInsets.only(bottom: 12),
+          child: ListTile(
+            title: Text(news['title'] ?? ''),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 4),
+                Text(news['description'] ?? '', maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                const SizedBox(height: 4),
+                Text('Источник: ${news['source'] ?? ''}', style: const TextStyle(fontSize: 10, color: Colors.blue)),
+              ],
+            ),
+            onTap: () => _showNewsDetail(context, news),
+          ),
+        )),
+      ],
+    );
+  }
+
+  void _showNewsDetail(BuildContext context, Map<String, dynamic> news) {
+    showModalBottomSheet(
+      context: context,
+      builder: (_) => Container(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(news['title'] ?? 'Новость', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            Text(news['description'] ?? 'Описание отсутствует', style: const TextStyle(fontSize: 16, height: 1.5)),
+            const SizedBox(height: 16),
+            SelectableText(
+              news['link'] ?? '',
+              style: const TextStyle(color: Colors.blue, fontSize: 14, decoration: TextDecoration.underline),
+              onTap: () async {
+                final url = news['link'] ?? '';
+                await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+              },
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              onPressed: () => Navigator.pop(context),
+              icon: const Icon(Icons.close),
+              label: const Text('Закрыть'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -421,12 +500,9 @@ class NewsListScreen extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const SizedBox(height: 4),
-                        Text(item['description'] ?? '',
-                            maxLines: 4, overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                        Text(item['description'] ?? '', maxLines: 4, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: Colors.grey)),
                         const SizedBox(height: 4),
-                        Text('Категория: ${item['category'] ?? 'Другое'}',
-                            style: const TextStyle(fontSize: 10, color: Colors.blue)),
+                        Text('Категория: ${item['category'] ?? 'Другое'}', style: const TextStyle(fontSize: 10, color: Colors.blue)),
                       ],
                     ),
                     onTap: () => _showNewsDetail(context, item),
