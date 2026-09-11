@@ -66,8 +66,9 @@ class CategorySelectionScreen extends StatefulWidget {
 
 class _CategorySelectionScreenState extends State<CategorySelectionScreen> {
   final Set<String> _selectedCategories = {};
+  // Категория "Развлечения" убрана!
   final List<String> _categories = [
-    'Экономика', 'Технологии', 'Здоровье', 'Спорт', 'Политика', 'Культура', 'Развлечения'
+    'Экономика', 'Технологии', 'Здоровье', 'Спорт', 'Политика', 'Культура'
   ];
 
   void _saveCategories() async {
@@ -247,6 +248,52 @@ class _MainScreenState extends State<MainScreen> {
     );
   }
 
+  // ===== ПОГОДА С РЕАЛЬНЫМИ ИКОНКАМИ =====
+  Widget _buildWeatherCard(Map<String, dynamic> weather) {
+    IconData weatherIcon = Icons.wb_sunny;
+    String condition = weather['condition'] ?? '';
+
+    if (condition.contains('Дождь') || condition.contains('Ливень') || condition.contains('Морось')) {
+      weatherIcon = Icons.grain;
+    } else if (condition.contains('Снег')) {
+      weatherIcon = Icons.ac_unit;
+    } else if (condition.contains('Гроза')) {
+      weatherIcon = Icons.flash_on;
+    } else if (condition.contains('Туман')) {
+      weatherIcon = Icons.foggy;
+    } else if (condition.contains('Облачно') || condition.contains('Малооблачно')) {
+      weatherIcon = Icons.cloud_queue;
+    } else {
+      weatherIcon = Icons.wb_sunny;
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.blue.shade400, Colors.blue.shade700],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          Icon(weatherIcon, color: Colors.white, size: 40),
+          const SizedBox(width: 16),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('${weather['temp'] ?? '--'}°C', style: const TextStyle(color: Colors.white, fontSize: 24)),
+              Text(condition, style: const TextStyle(color: Colors.white70)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ===== ПЕРСОНАЛЬНЫЙ ДАЙДЖЕСТ =====
   Widget _buildDigestSection() {
     return Container(
       decoration: BoxDecoration(
@@ -342,48 +389,6 @@ class _MainScreenState extends State<MainScreen> {
             child: const Text(
               'Читать источник →',
               style: TextStyle(color: Colors.blue, fontSize: 12, decoration: TextDecoration.underline),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildWeatherCard(Map<String, dynamic> weather) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Colors.blue.shade400, Colors.blue.shade700],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.wb_sunny, color: Colors.white, size: 40),
-          const SizedBox(width: 16),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('${weather['temp'] ?? '--'}°C', style: const TextStyle(color: Colors.white, fontSize: 24)),
-              Text(weather['condition'] ?? 'ясно', style: const TextStyle(color: Colors.white70)),
-            ],
-          ),
-          const Spacer(),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.directions_car, color: Colors.white, size: 16),
-                const SizedBox(width: 4),
-                Text('${weather['traffic'] ?? '--'} баллов', style: const TextStyle(color: Colors.white)),
-              ],
             ),
           ),
         ],
