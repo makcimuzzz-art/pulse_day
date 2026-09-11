@@ -3,8 +3,14 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
-void main() => runApp(PulseApp());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
+  runApp(PulseApp());
+}
 
 class PulseApp extends StatelessWidget {
   @override
@@ -27,7 +33,51 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
+    _setupNotifications();
     _checkPrefs();
+  }
+
+  Future<void> _setupNotifications() async {
+    try {
+      FirebaseMessaging messaging = FirebaseMessaging.instance;
+
+      NotificationSettings settings = await messaging.requestPermission(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+
+      if (settings.authorizationStatus == AuthorizationStatus.authorized) {
+        print('Разрешение на уведомления получено');
+
+        String? token = await messaging.getToken();
+        print('FCM Token: $token');
+
+        if (token != null) {
+          await _saveTokenToFirebase(token);
+        }
+
+        // Слушаем уведомления, когда приложение открыто
+        FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+          print('Получено уведомление: ${message.notification?.title}');
+        });
+      }
+    } catch (e) {
+      print('Ошибка настройки уведомлений: $e');
+    }
+  }
+
+  Future<void> _saveTokenToFirebase(String token) async {
+    try {
+      final url = Uri.parse('https://pulse-day-default-rtdb.firebaseio.com/tokens/$token.json');
+      await http.put(url, body: json.encode({
+        "active": true,
+        "created": DateTime.now().toIso8601String()
+      }));
+      print('Токен сохранён в Firebase');
+    } catch (e) {
+      print('Ошибка сохранения токена: $e');
+    }
   }
 
   Future<void> _checkPrefs() async {
@@ -225,13 +275,11 @@ class _MainScreenState extends State<MainScreen> {
         final data = json.decode(response.body);
         final allNews = data['news'] ?? [];
 
-        // Дайджест: по 1 новости из каждой выбранной категории
         List<dynamic> digest = [];
         for (var cat in _userCategories) {
           final found = allNews.firstWhere((n) => n['category'] == cat, orElse: () => null);
           if (found != null) digest.add(found);
         }
-        // Если дайджест меньше 3 — добираем из "Другое"
         if (digest.length < 3) {
           for (var n in allNews) {
             if (!digest.contains(n) && n['category'] != 'Регион') {
@@ -241,7 +289,6 @@ class _MainScreenState extends State<MainScreen> {
           }
         }
 
-        // Региональные новости
         final regional = allNews.where((n) => n['region'] == _userRegion).take(10).toList();
 
         setState(() {
