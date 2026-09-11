@@ -142,7 +142,7 @@ class _RegionSelectionScreenState extends State<RegionSelectionScreen> {
 
   void _saveRegion() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.setString('selected_region', _selectedRegion);
+    await prefs.setString('selected_region', _selectedRegion ?? 'Москва');
     Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => MainScreen()));
   }
 
