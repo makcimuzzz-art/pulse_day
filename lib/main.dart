@@ -75,7 +75,6 @@ class _SplashScreenState extends State<SplashScreen> {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     List<String>? savedCategories = prefs.getStringList('selected_categories');
 
-    // Теперь проверяем ТОЛЬКО категории (регион убрали!)
     if (savedCategories != null && savedCategories.isNotEmpty) {
       Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => MainScreen()));
     } else {
@@ -89,7 +88,7 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 }
 
-// ============= ЭКРАН ВЫБОРА КАТЕГОРИЙ (ОДИН ЭТАП) =============
+// ============= ЭКРАН ВЫБОРА КАТЕГОРИЙ =============
 class CategorySelectionScreen extends StatefulWidget {
   @override
   _CategorySelectionScreenState createState() => _CategorySelectionScreenState();
@@ -195,7 +194,6 @@ class _MainScreenState extends State<MainScreen> {
         final data = json.decode(response.body);
         final allNews = data['news'] ?? [];
 
-        // Дайджест: по 1 новости из каждой выбранной категории
         List<dynamic> digest = [];
         for (var cat in _userCategories) {
           final found = allNews.firstWhere((n) => n['category'] == cat, orElse: () => null);
@@ -231,12 +229,12 @@ class _MainScreenState extends State<MainScreen> {
     }
   }
 
-  void _openAskDis(BuildContext context) {
+  void _openYara(BuildContext context) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => AskDisScreen(askUrl: _askUrl),
+      builder: (_) => YaraScreen(askUrl: _askUrl),
     );
   }
 
@@ -248,9 +246,9 @@ class _MainScreenState extends State<MainScreen> {
         centerTitle: true,
         actions: [
           IconButton(
-            icon: const Icon(Icons.smart_toy_outlined),
-            tooltip: 'Спроси ДИС',
-            onPressed: () => _openAskDis(context),
+            icon: const Icon(Icons.auto_awesome),
+            tooltip: 'Спроси Яру',
+            onPressed: () => _openYara(context),
           ),
           IconButton(icon: const Icon(Icons.refresh), onPressed: _fetchData),
         ],
@@ -553,7 +551,7 @@ class _EditorialScreenState extends State<EditorialScreen> {
         minChildSize: 0.5,
         maxChildSize: 0.95,
         expand: false,
-        builder: (_, scrollController) => Container(
+        builder: (context, scrollController) => Container(
           padding: const EdgeInsets.all(24),
           child: SingleChildScrollView(
             controller: scrollController,
@@ -576,16 +574,16 @@ class _EditorialScreenState extends State<EditorialScreen> {
   }
 }
 
-// ============= ЭКРАН СПРОСИ ДИС =============
-class AskDisScreen extends StatefulWidget {
+// ============= ЭКРАН ЯРЫ (ИИ-помощник) =============
+class YaraScreen extends StatefulWidget {
   final String askUrl;
-  const AskDisScreen({Key? key, required this.askUrl}) : super(key: key);
+  const YaraScreen({Key? key, required this.askUrl}) : super(key: key);
 
   @override
-  _AskDisScreenState createState() => _AskDisScreenState();
+  _YaraScreenState createState() => _YaraScreenState();
 }
 
-class _AskDisScreenState extends State<AskDisScreen> {
+class _YaraScreenState extends State<YaraScreen> {
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final List<Map<String, String>> _messages = [];
@@ -596,7 +594,7 @@ class _AskDisScreenState extends State<AskDisScreen> {
     super.initState();
     _messages.add({
       "role": "bot",
-      "text": "Привет! 👋 Я ДИС — твой личный новостной помощник.\n\nСпроси меня о чём угодно:\n• «Что нового в Рязани?»\n• «Что с ценами на бензин?»\n• «Какие новости спорта?»\n\nЯ поищу в свежих новостях и дам краткий ответ."
+      "text": "Привет! 👋 Я Яра — твой личный новостной помощник.\n\nСпроси меня о чём угодно:\n• «Что нового в Рязани?»\n• «Что с ценами на бензин?»\n• «Какие новости спорта?»\n\nЯ поищу в свежих новостях и дам краткий ответ."
     });
   }
 
@@ -667,7 +665,7 @@ class _AskDisScreenState extends State<AskDisScreen> {
       minChildSize: 0.5,
       maxChildSize: 0.95,
       expand: false,
-      builder: (_, _) => Container(
+      builder: (context, scrollController) => Container(
         decoration: const BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -684,14 +682,14 @@ class _AskDisScreenState extends State<AskDisScreen> {
                 children: [
                   const CircleAvatar(
                     backgroundColor: Colors.white,
-                    child: Icon(Icons.smart_toy, color: Colors.deepPurple),
+                    child: Icon(Icons.auto_awesome, color: Colors.deepPurple),
                   ),
                   const SizedBox(width: 12),
                   const Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Спроси ДИС', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                        Text('Яра', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
                         Text('Ваш новостной помощник', style: TextStyle(color: Colors.white70, fontSize: 12)),
                       ],
                     ),
@@ -802,7 +800,7 @@ class _AskDisScreenState extends State<AskDisScreen> {
           children: const [
             SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.deepPurple)),
             SizedBox(width: 10),
-            Text('ДИС ищет ответ...', style: TextStyle(color: Colors.grey, fontSize: 14)),
+            Text('Яра ищет ответ...', style: TextStyle(color: Colors.grey, fontSize: 14)),
           ],
         ),
       ),
