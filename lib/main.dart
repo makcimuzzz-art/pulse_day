@@ -40,24 +40,15 @@ class _SplashScreenState extends State<SplashScreen> {
   Future<void> _setupNotifications() async {
     try {
       FirebaseMessaging messaging = FirebaseMessaging.instance;
-
       NotificationSettings settings = await messaging.requestPermission(
-        alert: true,
-        badge: true,
-        sound: true,
+        alert: true, badge: true, sound: true,
       );
 
       if (settings.authorizationStatus == AuthorizationStatus.authorized) {
-        print('Разрешение на уведомления получено');
-
         String? token = await messaging.getToken();
-        print('FCM Token: $token');
-
         if (token != null) {
           await _saveTokenToFirebase(token);
         }
-
-        // Слушаем уведомления, когда приложение открыто
         FirebaseMessaging.onMessage.listen((RemoteMessage message) {
           print('Получено уведомление: ${message.notification?.title}');
         });
@@ -83,9 +74,9 @@ class _SplashScreenState extends State<SplashScreen> {
   Future<void> _checkPrefs() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     List<String>? savedCategories = prefs.getStringList('selected_categories');
-    String? savedRegion = prefs.getString('selected_region');
 
-    if (savedCategories != null && savedCategories.isNotEmpty && savedRegion != null) {
+    // Теперь проверяем ТОЛЬКО категории (регион убрали!)
+    if (savedCategories != null && savedCategories.isNotEmpty) {
       Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => MainScreen()));
     } else {
       Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => CategorySelectionScreen()));
@@ -98,7 +89,7 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 }
 
-// ============= ЭКРАН ВЫБОРА КАТЕГОРИЙ =============
+// ============= ЭКРАН ВЫБОРА КАТЕГОРИЙ (ОДИН ЭТАП) =============
 class CategorySelectionScreen extends StatefulWidget {
   @override
   _CategorySelectionScreenState createState() => _CategorySelectionScreenState();
@@ -107,13 +98,14 @@ class CategorySelectionScreen extends StatefulWidget {
 class _CategorySelectionScreenState extends State<CategorySelectionScreen> {
   final Set<String> _selectedCategories = {};
   final List<String> _categories = [
-    'Экономика', 'Технологии', 'Здоровье', 'Спорт', 'Политика', 'Культура'
+    'Политика', 'Экономика', 'Технологии', 'Здоровье',
+    'Спорт', 'Культура', 'Общество', 'Происшествия'
   ];
 
-  void _saveAndGoToRegion() async {
+  void _saveCategories() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.setStringList('selected_categories', _selectedCategories.toList());
-    Navigator.push(context, MaterialPageRoute(builder: (_) => RegionSelectionScreen()));
+    Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => MainScreen()));
   }
 
   @override
@@ -125,7 +117,7 @@ class _CategorySelectionScreenState extends State<CategorySelectionScreen> {
         child: Column(
           children: [
             const Text(
-              'Шаг 1 из 2\nВыберите 3 категории новостей, которые вас интересуют больше всего.',
+              'Приветствуем в ДИС.Новости!\nВыберите 3 и более категорий новостей, которые вас интересуют больше всего.',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
@@ -149,83 +141,13 @@ class _CategorySelectionScreenState extends State<CategorySelectionScreen> {
                 }).toList(),
               ),
             ),
-            ElevatedButton(
-              onPressed: _selectedCategories.length >= 3 ? _saveAndGoToRegion : null,
-              child: const Text('Далее'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ============= ЭКРАН ВЫБОРА РЕГИОНА =============
-class RegionSelectionScreen extends StatefulWidget {
-  @override
-  _RegionSelectionScreenState createState() => _RegionSelectionScreenState();
-}
-
-class _RegionSelectionScreenState extends State<RegionSelectionScreen> {
-  String? _selectedRegion;
-
-  final List<String> _regions = [
-    'Москва',
-    'Санкт-Петербург',
-    'Рязань',
-    'Татарстан',
-    'Свердловская область',
-    'Новосибирская область',
-    'Тульская область',
-    'Владимирская область',
-    'Краснодарский край',
-    'Ростовская область',
-    'Нижегородская область',
-    'Самарская область',
-    'Челябинская область',
-    'Омская область',
-    'Воронежская область',
-    'Пермский край',
-    'Красноярский край',
-    'Приморский край'
-  ];
-
-  void _saveRegion() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.setString('selected_region', _selectedRegion ?? 'Москва');
-    Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => MainScreen()));
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('ДИС.Новости'), centerTitle: true),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            const Text(
-              'Шаг 2 из 2\nВыберите ваш регион, чтобы видеть местные новости.',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
             const SizedBox(height: 20),
-            Expanded(
-              child: ListView(
-                children: _regions.map((region) {
-                  return RadioListTile<String>(
-                    title: Text(region),
-                    value: region,
-                    groupValue: _selectedRegion,
-                    onChanged: (String? value) {
-                      setState(() => _selectedRegion = value);
-                    },
-                  );
-                }).toList(),
-              ),
-            ),
             ElevatedButton(
-              onPressed: _selectedRegion != null ? _saveRegion : null,
+              onPressed: _selectedCategories.length >= 3 ? _saveCategories : null,
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 16),
+                textStyle: const TextStyle(fontSize: 16),
+              ),
               child: const Text('Продолжить'),
             ),
           ],
@@ -245,25 +167,23 @@ class _MainScreenState extends State<MainScreen> {
   Map<String, dynamic>? _dailyData;
   List<dynamic> _allNews = [];
   List<dynamic> _digestNews = [];
-  List<dynamic> _regionalNews = [];
   List<String> _userCategories = [];
-  String _userRegion = '';
   bool _isLoading = true;
   bool _isDigestExpanded = false;
   String? _error;
 
   final String _serverUrl = "http://201.24.53.232:8000/api/daily";
+  final String _askUrl = "http://201.24.53.232:8000/api/ask";
 
   @override
   void initState() {
     super.initState();
-    _loadPrefsAndData();
+    _loadCategoriesAndData();
   }
 
-  Future<void> _loadPrefsAndData() async {
+  Future<void> _loadCategoriesAndData() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     _userCategories = prefs.getStringList('selected_categories') ?? [];
-    _userRegion = prefs.getString('selected_region') ?? 'Москва';
     await _fetchData();
   }
 
@@ -275,11 +195,13 @@ class _MainScreenState extends State<MainScreen> {
         final data = json.decode(response.body);
         final allNews = data['news'] ?? [];
 
+        // Дайджест: по 1 новости из каждой выбранной категории
         List<dynamic> digest = [];
         for (var cat in _userCategories) {
           final found = allNews.firstWhere((n) => n['category'] == cat, orElse: () => null);
           if (found != null) digest.add(found);
         }
+
         if (digest.length < 3) {
           for (var n in allNews) {
             if (!digest.contains(n) && n['category'] != 'Регион') {
@@ -289,13 +211,10 @@ class _MainScreenState extends State<MainScreen> {
           }
         }
 
-        final regional = allNews.where((n) => n['region'] == _userRegion).take(10).toList();
-
         setState(() {
           _dailyData = data;
           _allNews = allNews;
           _digestNews = digest;
-          _regionalNews = regional;
           _isLoading = false;
         });
       } else {
@@ -312,13 +231,29 @@ class _MainScreenState extends State<MainScreen> {
     }
   }
 
+  void _openAskDis(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => AskDisScreen(askUrl: _askUrl),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('ДИС.Новости'),
         centerTitle: true,
-        actions: [IconButton(icon: const Icon(Icons.refresh), onPressed: _fetchData)],
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.smart_toy_outlined),
+            tooltip: 'Спроси ДИС',
+            onPressed: () => _openAskDis(context),
+          ),
+          IconButton(icon: const Icon(Icons.refresh), onPressed: _fetchData),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -356,8 +291,6 @@ class _MainScreenState extends State<MainScreen> {
             _buildWeatherCard(weather),
             const SizedBox(height: 16),
             _buildDigestSection(),
-            const SizedBox(height: 16),
-            _buildRegionalSection(),
           ],
         ),
       ),
@@ -458,66 +391,6 @@ class _MainScreenState extends State<MainScreen> {
             child: const Text('Читать источник →', style: TextStyle(color: Colors.blue, fontSize: 12, decoration: TextDecoration.underline)),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildRegionalSection() {
-    if (_regionalNews.isEmpty) return const SizedBox.shrink();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('Новости вашего региона: $_userRegion',
-          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 8),
-        ..._regionalNews.map((news) => Card(
-          margin: const EdgeInsets.only(bottom: 12),
-          child: ListTile(
-            title: Text(news['title'] ?? ''),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 4),
-                Text(news['description'] ?? '', maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                const SizedBox(height: 4),
-                Text('Источник: ${news['source'] ?? ''}', style: const TextStyle(fontSize: 10, color: Colors.blue)),
-              ],
-            ),
-            onTap: () => _showNewsDetail(context, news),
-          ),
-        )),
-      ],
-    );
-  }
-
-  void _showNewsDetail(BuildContext context, Map<String, dynamic> news) {
-    showModalBottomSheet(
-      context: context,
-      builder: (_) => Container(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(news['title'] ?? 'Новость', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            Text(news['description'] ?? 'Описание отсутствует', style: const TextStyle(fontSize: 16, height: 1.5)),
-            const SizedBox(height: 16),
-            SelectableText(
-              news['link'] ?? '',
-              style: const TextStyle(color: Colors.blue, fontSize: 14, decoration: TextDecoration.underline),
-              onTap: () async {
-                final url = news['link'] ?? '';
-                await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-              },
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton.icon(
-              onPressed: () => Navigator.pop(context),
-              icon: const Icon(Icons.close),
-              label: const Text('Закрыть'),
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -658,12 +531,9 @@ class _EditorialScreenState extends State<EditorialScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 const SizedBox(height: 4),
-                                Text(article['short_description'] ?? '',
-                                    maxLines: 2, overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                                Text(article['short_description'] ?? '', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: Colors.grey)),
                                 const SizedBox(height: 4),
-                                Text(article['date'] ?? '',
-                                    style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                                Text(article['date'] ?? '', style: const TextStyle(fontSize: 10, color: Colors.grey)),
                               ],
                             ),
                             onTap: () => _showFullArticle(context, article),
@@ -679,9 +549,9 @@ class _EditorialScreenState extends State<EditorialScreen> {
       context: context,
       isScrollControlled: true,
       builder: (_) => DraggableScrollableSheet(
-        initialChildSize: 0.8,
+        initialChildSize: 0.85,
         minChildSize: 0.5,
-        maxChildSize: 0.9,
+        maxChildSize: 0.95,
         expand: false,
         builder: (_, scrollController) => Container(
           padding: const EdgeInsets.all(24),
@@ -700,6 +570,240 @@ class _EditorialScreenState extends State<EditorialScreen> {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+// ============= ЭКРАН СПРОСИ ДИС =============
+class AskDisScreen extends StatefulWidget {
+  final String askUrl;
+  const AskDisScreen({Key? key, required this.askUrl}) : super(key: key);
+
+  @override
+  _AskDisScreenState createState() => _AskDisScreenState();
+}
+
+class _AskDisScreenState extends State<AskDisScreen> {
+  final TextEditingController _controller = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
+  final List<Map<String, String>> _messages = [];
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _messages.add({
+      "role": "bot",
+      "text": "Привет! 👋 Я ДИС — твой личный новостной помощник.\n\nСпроси меня о чём угодно:\n• «Что нового в Рязани?»\n• «Что с ценами на бензин?»\n• «Какие новости спорта?»\n\nЯ поищу в свежих новостях и дам краткий ответ."
+    });
+  }
+
+  Future<void> _sendQuestion() async {
+    final question = _controller.text.trim();
+    if (question.isEmpty || _isLoading) return;
+
+    setState(() {
+      _messages.add({"role": "user", "text": question});
+      _isLoading = true;
+      _controller.clear();
+    });
+    _scrollToBottom();
+
+    try {
+      final response = await http.post(
+        Uri.parse(widget.askUrl),
+        headers: {"Content-Type": "application/json"},
+        body: json.encode({"question": question, "user_id": "user_default"}),
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        setState(() {
+          _messages.add({
+            "role": "bot",
+            "text": data['answer'] ?? 'Не удалось получить ответ.'
+          });
+          _isLoading = false;
+        });
+      } else {
+        setState(() {
+          _messages.add({
+            "role": "bot",
+            "text": 'Ошибка сервера: ${response.statusCode}'
+          });
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _messages.add({
+          "role": "bot",
+          "text": 'Не удалось подключиться. Проверьте интернет.'
+        });
+        _isLoading = false;
+      });
+    }
+    _scrollToBottom();
+  }
+
+  void _scrollToBottom() {
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DraggableScrollableSheet(
+      initialChildSize: 0.9,
+      minChildSize: 0.5,
+      maxChildSize: 0.95,
+      expand: false,
+      builder: (_, _) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(colors: [Color(0xFF6A1B9A), Color(0xFF8E24AA)]),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              child: Row(
+                children: [
+                  const CircleAvatar(
+                    backgroundColor: Colors.white,
+                    child: Icon(Icons.smart_toy, color: Colors.deepPurple),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Спроси ДИС', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                        Text('Ваш новостной помощник', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: ListView.builder(
+                controller: _scrollController,
+                padding: const EdgeInsets.all(16),
+                itemCount: _messages.length + (_isLoading ? 1 : 0),
+                itemBuilder: (context, index) {
+                  if (index == _messages.length && _isLoading) {
+                    return _buildLoadingBubble();
+                  }
+                  final msg = _messages[index];
+                  return _buildMessageBubble(msg['role']!, msg['text']!);
+                },
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                border: Border(top: BorderSide(color: Colors.grey.shade300)),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _controller,
+                      decoration: InputDecoration(
+                        hintText: 'Напишите вопрос...',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(24),
+                          borderSide: BorderSide.none,
+                        ),
+                        filled: true,
+                        fillColor: Colors.white,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      ),
+                      onSubmitted: (_) => _sendQuestion(),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  CircleAvatar(
+                    backgroundColor: Colors.deepPurple,
+                    child: IconButton(
+                      icon: const Icon(Icons.send, color: Colors.white, size: 20),
+                      onPressed: _isLoading ? null : _sendQuestion,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMessageBubble(String role, String text) {
+    final isUser = role == 'user';
+    return Align(
+      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 6),
+        padding: const EdgeInsets.all(14),
+        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.78),
+        decoration: BoxDecoration(
+          color: isUser ? Colors.deepPurple : Colors.grey.shade100,
+          borderRadius: BorderRadius.only(
+            topLeft: const Radius.circular(18),
+            topRight: const Radius.circular(18),
+            bottomLeft: Radius.circular(isUser ? 18 : 4),
+            bottomRight: Radius.circular(isUser ? 4 : 18),
+          ),
+        ),
+        child: Text(
+          text,
+          style: TextStyle(
+            color: isUser ? Colors.white : Colors.black87,
+            fontSize: 15,
+            height: 1.4,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLoadingBubble() {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 6),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: const [
+            SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.deepPurple)),
+            SizedBox(width: 10),
+            Text('ДИС ищет ответ...', style: TextStyle(color: Colors.grey, fontSize: 14)),
+          ],
         ),
       ),
     );
