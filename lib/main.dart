@@ -574,7 +574,7 @@ class _EditorialScreenState extends State<EditorialScreen> {
   }
 }
 
-// ============= ЭКРАН ЯРЫ (ИИ-помощник) =============
+// ============= ЭКРАН ЯРЫ (ИИ-помощница) =============
 class YaraScreen extends StatefulWidget {
   final String askUrl;
   const YaraScreen({Key? key, required this.askUrl}) : super(key: key);
@@ -594,7 +594,7 @@ class _YaraScreenState extends State<YaraScreen> {
     super.initState();
     _messages.add({
       "role": "bot",
-      "text": "Привет! 👋 Я Яра — твой личный новостной помощник.\n\nСпроси меня о чём угодно:\n• «Что нового в Рязани?»\n• «Что с ценами на бензин?»\n• «Какие новости спорта?»\n\nЯ поищу в свежих новостях и дам краткий ответ."
+      "text": "Привет! 👋 Я Яра — твоя умная новостная помощница.\n\nЯ умею:\n• 📰 Искать новости по темам\n• 🌤 Рассказывать о погоде\n• 💱 Показывать курсы валют\n• 🎯 Отвечать на вопросы о событиях\n\nСпроси меня о чём-нибудь!"
     });
   }
 
@@ -690,7 +690,7 @@ class _YaraScreenState extends State<YaraScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text('Яра', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-                        Text('Ваш новостной помощник', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                        Text('Ваша новостная помощница', style: TextStyle(color: Colors.white70, fontSize: 12)),
                       ],
                     ),
                   ),
