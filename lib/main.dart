@@ -172,7 +172,8 @@ class _MainScreenState extends State<MainScreen> {
   String? _error;
 
   final String _serverUrl = "http://201.24.53.232:8000/api/daily";
-  final String _askUrl = "http://201.24.53.232:8000/api/ask";
+  final String _yaraUrl = "http://201.24.53.232:8001/api/yara/chat";
+  final String _yaraAvatar = "http://201.24.53.232:8000/static/yara.png";
 
   @override
   void initState() {
@@ -234,7 +235,7 @@ class _MainScreenState extends State<MainScreen> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => YaraScreen(askUrl: _askUrl),
+      builder: (_) => YaraScreen(yaraUrl: _yaraUrl, yaraAvatar: _yaraAvatar),
     );
   }
 
@@ -246,7 +247,16 @@ class _MainScreenState extends State<MainScreen> {
         centerTitle: true,
         actions: [
           IconButton(
-            icon: const Icon(Icons.auto_awesome),
+            icon: ClipOval(
+              child: Image.network(
+                _yaraAvatar,
+                width: 32,
+                height: 32,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) =>
+                    const Icon(Icons.auto_awesome),
+              ),
+            ),
             tooltip: 'Спроси Яру',
             onPressed: () => _openYara(context),
           ),
@@ -576,8 +586,9 @@ class _EditorialScreenState extends State<EditorialScreen> {
 
 // ============= ЭКРАН ЯРЫ (ИИ-помощница) =============
 class YaraScreen extends StatefulWidget {
-  final String askUrl;
-  const YaraScreen({Key? key, required this.askUrl}) : super(key: key);
+  final String yaraUrl;
+  final String yaraAvatar;
+  const YaraScreen({Key? key, required this.yaraUrl, required this.yaraAvatar}) : super(key: key);
 
   @override
   _YaraScreenState createState() => _YaraScreenState();
@@ -594,7 +605,7 @@ class _YaraScreenState extends State<YaraScreen> {
     super.initState();
     _messages.add({
       "role": "bot",
-      "text": "Привет! 👋 Я Яра — твоя умная новостная помощница.\n\nЯ умею:\n• 📰 Искать новости по темам\n• 🌤 Рассказывать о погоде\n• 💱 Показывать курсы валют\n• 🎯 Отвечать на вопросы о событиях\n\nСпроси меня о чём-нибудь!"
+      "text": "Привет! 👋 Я Яра — твоя умная новостная помощница.\n\nЯ умею:\n• 📰 Искать новости по темам\n• 🌤 Рассказывать о погоде\n• 💱 Показывать курсы валют\n• 🎯 Отвечать на вопросы\n\nСпроси меня о чём-нибудь!"
     });
   }
 
@@ -611,9 +622,12 @@ class _YaraScreenState extends State<YaraScreen> {
 
     try {
       final response = await http.post(
-        Uri.parse(widget.askUrl),
+        Uri.parse(widget.yaraUrl),
         headers: {"Content-Type": "application/json"},
-        body: json.encode({"question": question, "user_id": "user_default"}),
+        body: json.encode({
+          "user_id": "user_default",
+          "message": question,
+        }),
       );
 
       if (response.statusCode == 200) {
@@ -680,9 +694,10 @@ class _YaraScreenState extends State<YaraScreen> {
               ),
               child: Row(
                 children: [
-                  const CircleAvatar(
+                  CircleAvatar(
                     backgroundColor: Colors.white,
-                    child: Icon(Icons.auto_awesome, color: Colors.deepPurple),
+                    backgroundImage: NetworkImage(widget.yaraAvatar),
+                    radius: 22,
                   ),
                   const SizedBox(width: 12),
                   const Expanded(
@@ -758,52 +773,79 @@ class _YaraScreenState extends State<YaraScreen> {
 
   Widget _buildMessageBubble(String role, String text) {
     final isUser = role == 'user';
-    return Align(
-      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 6),
-        padding: const EdgeInsets.all(14),
-        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.78),
-        decoration: BoxDecoration(
-          color: isUser ? Colors.deepPurple : Colors.grey.shade100,
-          borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(18),
-            topRight: const Radius.circular(18),
-            bottomLeft: Radius.circular(isUser ? 18 : 4),
-            bottomRight: Radius.circular(isUser ? 4 : 18),
+    return Row(
+      mainAxisAlignment: isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (!isUser) ...[
+          CircleAvatar(
+            radius: 16,
+            backgroundImage: NetworkImage(widget.yaraAvatar),
+          ),
+          const SizedBox(width: 8),
+        ],
+        Flexible(
+          child: Container(
+            margin: const EdgeInsets.symmetric(vertical: 6),
+            padding: const EdgeInsets.all(14),
+            constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.72),
+            decoration: BoxDecoration(
+              color: isUser ? Colors.deepPurple : Colors.grey.shade100,
+              borderRadius: BorderRadius.only(
+                topLeft: const Radius.circular(18),
+                topRight: const Radius.circular(18),
+                bottomLeft: Radius.circular(isUser ? 18 : 4),
+                bottomRight: Radius.circular(isUser ? 4 : 18),
+              ),
+            ),
+            child: Text(
+              text,
+              style: TextStyle(
+                color: isUser ? Colors.white : Colors.black87,
+                fontSize: 15,
+                height: 1.4,
+              ),
+            ),
           ),
         ),
-        child: Text(
-          text,
-          style: TextStyle(
-            color: isUser ? Colors.white : Colors.black87,
-            fontSize: 15,
-            height: 1.4,
+        if (isUser) ...[
+          const SizedBox(width: 8),
+          const CircleAvatar(
+            radius: 16,
+            backgroundColor: Colors.deepPurple,
+            child: Icon(Icons.person, color: Colors.white, size: 18),
           ),
-        ),
-      ),
+        ],
+      ],
     );
   }
 
   Widget _buildLoadingBubble() {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 6),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: Colors.grey.shade100,
-          borderRadius: BorderRadius.circular(18),
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        CircleAvatar(
+          radius: 16,
+          backgroundImage: NetworkImage(widget.yaraAvatar),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: const [
-            SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.deepPurple)),
-            SizedBox(width: 10),
-            Text('Яра ищет ответ...', style: TextStyle(color: Colors.grey, fontSize: 14)),
-          ],
+        const SizedBox(width: 8),
+        Container(
+          margin: const EdgeInsets.symmetric(vertical: 6),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Colors.grey.shade100,
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.deepPurple)),
+              SizedBox(width: 10),
+              Text('Яра думает...', style: TextStyle(color: Colors.grey, fontSize: 14)),
+            ],
+          ),
         ),
-      ),
+      ],
     );
   }
 }
