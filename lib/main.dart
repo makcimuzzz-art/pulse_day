@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:share_plus/share_plus.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -65,7 +66,6 @@ class _SplashScreenState extends State<SplashScreen> {
         "active": true,
         "created": DateTime.now().toIso8601String()
       }));
-      print('Токен сохранён в Firebase');
     } catch (e) {
       print('Ошибка сохранения токена: $e');
     }
@@ -167,6 +167,7 @@ class _MainScreenState extends State<MainScreen> {
   List<dynamic> _allNews = [];
   List<dynamic> _digestNews = [];
   List<String> _userCategories = [];
+  Map<String, String> _reactions = {};
   bool _isLoading = true;
   bool _isDigestExpanded = false;
   String? _error;
@@ -174,17 +175,55 @@ class _MainScreenState extends State<MainScreen> {
   final String _serverUrl = "http://201.24.53.232:8000/api/daily";
   final String _yaraUrl = "http://201.24.53.232:8001/api/yara/chat";
   final String _yaraAvatar = "http://201.24.53.232:8000/static/yara.png";
+  final String _userKey = "user_default";
 
   @override
   void initState() {
     super.initState();
-    _loadCategoriesAndData();
+    _loadData();
   }
 
-  Future<void> _loadCategoriesAndData() async {
+  Future<void> _loadData() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     _userCategories = prefs.getStringList('selected_categories') ?? [];
+    await _loadReactions();
     await _fetchData();
+  }
+
+  Future<void> _loadReactions() async {
+    try {
+      final url = Uri.parse('https://pulse-day-default-rtdb.firebaseio.com/reactions/$_userKey.json');
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data != null) {
+          setState(() {
+            _reactions = Map<String, String>.from(data);
+          });
+        }
+      }
+    } catch (e) {
+      print('Ошибка загрузки реакций: $e');
+    }
+  }
+
+  Future<void> _saveReaction(String newsKey, String reaction) async {
+    try {
+      final url = Uri.parse('https://pulse-day-default-rtdb.firebaseio.com/reactions/$_userKey/$newsKey.json');
+      if (_reactions[newsKey] == reaction) {
+        await http.delete(url);
+        setState(() {
+          _reactions.remove(newsKey);
+        });
+      } else {
+        await http.put(url, body: json.encode(reaction));
+        setState(() {
+          _reactions[newsKey] = reaction;
+        });
+      }
+    } catch (e) {
+      print('Ошибка сохранения реакции: $e');
+    }
   }
 
   Future<void> _fetchData() async {
@@ -253,8 +292,7 @@ class _MainScreenState extends State<MainScreen> {
                 width: 32,
                 height: 32,
                 fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) =>
-                    const Icon(Icons.auto_awesome),
+                errorBuilder: (context, error, stackTrace) => const Icon(Icons.auto_awesome),
               ),
             ),
             tooltip: 'Спроси Яру',
@@ -278,7 +316,13 @@ class _MainScreenState extends State<MainScreen> {
         ],
         onTap: (index) {
           if (index == 1) {
-            Navigator.push(context, MaterialPageRoute(builder: (_) => NewsListScreen(news: _allNews)));
+            Navigator.push(context, MaterialPageRoute(
+              builder: (_) => NewsListScreen(
+                news: _allNews,
+                reactions: _reactions,
+                onReact: _saveReaction,
+              ),
+            ));
           } else if (index == 2) {
             Navigator.push(context, MaterialPageRoute(builder: (_) => EditorialScreen()));
           }
@@ -378,6 +422,9 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   Widget _buildDigestCard(Map<String, dynamic> news) {
+    final newsKey = (news['link'] ?? news['title'] ?? '').hashCode.toString();
+    final reaction = _reactions[newsKey];
+
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       padding: const EdgeInsets.all(12),
@@ -390,14 +437,123 @@ class _MainScreenState extends State<MainScreen> {
           Text(news['title'] ?? 'Без названия', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold), maxLines: 2, overflow: TextOverflow.ellipsis),
           const SizedBox(height: 4),
           Text(news['description'] ?? '', style: const TextStyle(fontSize: 12, color: Colors.grey), maxLines: 2, overflow: TextOverflow.ellipsis),
-          const SizedBox(height: 6),
-          InkWell(
-            onTap: () async {
-              final url = news['link'] ?? '';
-              if (url.isNotEmpty) await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-            },
-            child: const Text('Читать источник →', style: TextStyle(color: Colors.blue, fontSize: 12, decoration: TextDecoration.underline)),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              _buildReactionButton(
+                icon: reaction == 'like' ? Icons.thumb_up : Icons.thumb_up_outlined,
+                active: reaction == 'like',
+                onTap: () => _saveReaction(newsKey, 'like'),
+              ),
+              const SizedBox(width: 12),
+              _buildReactionButton(
+                icon: reaction == 'dislike' ? Icons.thumb_down : Icons.thumb_down_outlined,
+                active: reaction == 'dislike',
+                onTap: () => _saveReaction(newsKey, 'dislike'),
+              ),
+              const Spacer(),
+              IconButton(
+                icon: const Icon(Icons.share, size: 20, color: Colors.blue),
+                tooltip: 'Поделиться',
+                onPressed: () => _shareNews(news),
+              ),
+              InkWell(
+                onTap: () async {
+                  final url = news['link'] ?? '';
+                  if (url.isNotEmpty) await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+                },
+                child: const Text('Читать →', style: TextStyle(color: Colors.blue, fontSize: 12, decoration: TextDecoration.underline)),
+              ),
+            ],
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReactionButton({required IconData icon, required bool active, required VoidCallback onTap}) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        child: Icon(
+          icon,
+          size: 22,
+          color: active ? Colors.deepPurple : Colors.grey,
+        ),
+      ),
+    );
+  }
+
+  void _shareNews(Map<String, dynamic> news) {
+    final title = news['title'] ?? 'Новость';
+    final link = news['link'] ?? '';
+    final text = '$title\n\nЧитать: $link\n\n— ДИС.Новости';
+
+    showModalBottomSheet(
+      context: context,
+      builder: (_) => Container(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Поделиться', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 20),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _buildShareOption(
+                  icon: Icons.chat,
+                  label: 'ВК',
+                  color: Colors.blue.shade700,
+                  onTap: () {
+                    final url = 'https://vk.com/share.php?url=${Uri.encodeComponent(link)}&title=${Uri.encodeComponent(title)}';
+                    launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+                    Navigator.pop(context);
+                  },
+                ),
+                _buildShareOption(
+                  icon: Icons.send,
+                  label: 'Telegram',
+                  color: Colors.blue.shade400,
+                  onTap: () {
+                    final url = 'https://t.me/share/url?url=${Uri.encodeComponent(link)}&text=${Uri.encodeComponent(title)}';
+                    launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+                    Navigator.pop(context);
+                  },
+                ),
+                _buildShareOption(
+                  icon: Icons.copy,
+                  label: 'Копировать',
+                  color: Colors.grey.shade700,
+                  onTap: () {
+                    Share.share(text);
+                    Navigator.pop(context);
+                  },
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildShareOption({required IconData icon, required String label, required Color color, required VoidCallback onTap}) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Column(
+        children: [
+          Container(
+            width: 60,
+            height: 60,
+            decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(16)),
+            child: Icon(icon, color: Colors.white, size: 30),
+          ),
+          const SizedBox(height: 8),
+          Text(label, style: const TextStyle(fontSize: 12)),
         ],
       ),
     );
@@ -407,7 +563,10 @@ class _MainScreenState extends State<MainScreen> {
 // ============= ЭКРАН ВСЕХ НОВОСТЕЙ =============
 class NewsListScreen extends StatelessWidget {
   final List<dynamic> news;
-  const NewsListScreen({Key? key, required this.news}) : super(key: key);
+  final Map<String, String> reactions;
+  final Function(String, String) onReact;
+
+  const NewsListScreen({Key? key, required this.news, required this.reactions, required this.onReact}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -420,56 +579,69 @@ class NewsListScreen extends StatelessWidget {
               itemCount: news.length,
               itemBuilder: (context, index) {
                 final item = news[index];
+                final newsKey = (item['link'] ?? item['title'] ?? '').hashCode.toString();
+                final reaction = reactions[newsKey];
+
                 return Card(
                   margin: const EdgeInsets.only(bottom: 12),
-                  child: ListTile(
-                    title: Text(item['title'] ?? 'Без названия'),
-                    subtitle: Column(
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        Text(item['title'] ?? 'Без названия',
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                          maxLines: 3, overflow: TextOverflow.ellipsis),
                         const SizedBox(height: 4),
-                        Text(item['description'] ?? '', maxLines: 4, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                        Text(item['description'] ?? '',
+                          maxLines: 4, overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 12, color: Colors.grey)),
                         const SizedBox(height: 4),
-                        Text('Категория: ${item['category'] ?? 'Другое'}', style: const TextStyle(fontSize: 10, color: Colors.blue)),
+                        Text('Категория: ${item['category'] ?? 'Другое'}',
+                          style: const TextStyle(fontSize: 10, color: Colors.blue)),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            InkWell(
+                              onTap: () => onReact(newsKey, 'like'),
+                              child: Padding(
+                                padding: const EdgeInsets.all(8),
+                                child: Icon(
+                                  reaction == 'like' ? Icons.thumb_up : Icons.thumb_up_outlined,
+                                  size: 20,
+                                  color: reaction == 'like' ? Colors.deepPurple : Colors.grey,
+                                ),
+                              ),
+                            ),
+                            InkWell(
+                              onTap: () => onReact(newsKey, 'dislike'),
+                              child: Padding(
+                                padding: const EdgeInsets.all(8),
+                                child: Icon(
+                                  reaction == 'dislike' ? Icons.thumb_down : Icons.thumb_down_outlined,
+                                  size: 20,
+                                  color: reaction == 'dislike' ? Colors.deepPurple : Colors.grey,
+                                ),
+                              ),
+                            ),
+                            const Spacer(),
+                            IconButton(
+                              icon: const Icon(Icons.share, size: 20, color: Colors.blue),
+                              onPressed: () {
+                                final title = item['title'] ?? 'Новость';
+                                final link = item['link'] ?? '';
+                                final text = '$title\n\nЧитать: $link\n\n— ДИС.Новости';
+                                Share.share(text);
+                              },
+                            ),
+                          ],
+                        ),
                       ],
                     ),
-                    onTap: () => _showNewsDetail(context, item),
                   ),
                 );
               },
             ),
-    );
-  }
-
-  void _showNewsDetail(BuildContext context, Map<String, dynamic> news) {
-    showModalBottomSheet(
-      context: context,
-      builder: (_) => Container(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(news['title'] ?? 'Новость', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            Text(news['description'] ?? 'Описание отсутствует', style: const TextStyle(fontSize: 16, height: 1.5)),
-            const SizedBox(height: 16),
-            SelectableText(
-              news['link'] ?? '',
-              style: const TextStyle(color: Colors.blue, fontSize: 14, decoration: TextDecoration.underline),
-              onTap: () async {
-                final url = news['link'] ?? '';
-                await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-              },
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton.icon(
-              onPressed: () => Navigator.pop(context),
-              icon: const Icon(Icons.close),
-              label: const Text('Закрыть'),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }
@@ -584,7 +756,7 @@ class _EditorialScreenState extends State<EditorialScreen> {
   }
 }
 
-// ============= ЭКРАН ЯРЫ (ИИ-помощница) =============
+// ============= ЭКРАН ЯРЫ =============
 class YaraScreen extends StatefulWidget {
   final String yaraUrl;
   final String yaraAvatar;
@@ -624,36 +796,24 @@ class _YaraScreenState extends State<YaraScreen> {
       final response = await http.post(
         Uri.parse(widget.yaraUrl),
         headers: {"Content-Type": "application/json"},
-        body: json.encode({
-          "user_id": "user_default",
-          "message": question,
-        }),
+        body: json.encode({"user_id": "user_default", "message": question}),
       );
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         setState(() {
-          _messages.add({
-            "role": "bot",
-            "text": data['answer'] ?? 'Не удалось получить ответ.'
-          });
+          _messages.add({"role": "bot", "text": data['answer'] ?? 'Ошибка'});
           _isLoading = false;
         });
       } else {
         setState(() {
-          _messages.add({
-            "role": "bot",
-            "text": 'Ошибка сервера: ${response.statusCode}'
-          });
+          _messages.add({"role": "bot", "text": 'Ошибка сервера: ${response.statusCode}'});
           _isLoading = false;
         });
       }
     } catch (e) {
       setState(() {
-        _messages.add({
-          "role": "bot",
-          "text": 'Не удалось подключиться. Проверьте интернет.'
-        });
+        _messages.add({"role": "bot", "text": 'Не удалось подключиться'});
         _isLoading = false;
       });
     }
