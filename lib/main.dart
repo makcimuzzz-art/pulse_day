@@ -1,33 +1,58 @@
-import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
+import 'dart:async';
 import 'dart:convert';
-import 'package:url_launcher/url_launcher.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:share_plus/share_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+const String serverBaseUrl = 'http://201.24.53.232:8000';
+const String dailyUrl = '$serverBaseUrl/api/daily';
+const String editorialUrl = '$serverBaseUrl/api/editorial';
+const String yaraUrl = 'http://201.24.53.232:8001/api/yara/chat';
+const String yaraAvatarUrl = '$serverBaseUrl/static/yara.png';
+const String firebaseDatabaseUrl =
+    'https://pulse-day-default-rtdb.firebaseio.com';
+const String userKey = 'user_default';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
-  runApp(PulseApp());
+  runApp(const PulseApp());
 }
 
 class PulseApp extends StatelessWidget {
+  const PulseApp({super.key});
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'ДИС.Новости',
-      theme: ThemeData(primarySwatch: Colors.blue, brightness: Brightness.light),
-      home: SplashScreen(),
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF2457A6)),
+        useMaterial3: true,
+        scaffoldBackgroundColor: const Color(0xFFF4F6FA),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Colors.white,
+          foregroundColor: Color(0xFF17243A),
+          elevation: 0,
+          centerTitle: false,
+        ),
+      ),
+      home: const SplashScreen(),
     );
   }
 }
 
-// ============= SPLASH SCREEN =============
 class SplashScreen extends StatefulWidget {
+  const SplashScreen({super.key});
+
   @override
-  _SplashScreenState createState() => _SplashScreenState();
+  State<SplashScreen> createState() => _SplashScreenState();
 }
 
 class _SplashScreenState extends State<SplashScreen> {
@@ -35,629 +60,1038 @@ class _SplashScreenState extends State<SplashScreen> {
   void initState() {
     super.initState();
     _setupNotifications();
-    _checkPrefs();
+    _openNextScreen();
   }
 
   Future<void> _setupNotifications() async {
     try {
-      FirebaseMessaging messaging = FirebaseMessaging.instance;
-      NotificationSettings settings = await messaging.requestPermission(
-        alert: true, badge: true, sound: true,
+      final messaging = FirebaseMessaging.instance;
+      final settings = await messaging.requestPermission(
+        alert: true,
+        badge: true,
+        sound: true,
       );
-
       if (settings.authorizationStatus == AuthorizationStatus.authorized) {
-        String? token = await messaging.getToken();
+        final token = await messaging.getToken();
         if (token != null) {
-          await _saveTokenToFirebase(token);
+          await http.put(
+            Uri.parse('$firebaseDatabaseUrl/tokens/$token.json'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'active': true,
+              'created': DateTime.now().toIso8601String(),
+            }),
+          );
         }
-        FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-          print('Получено уведомление: ${message.notification?.title}');
+        FirebaseMessaging.onMessage.listen((message) {
+          debugPrint('Получено уведомление: ${message.notification?.title}');
         });
       }
     } catch (e) {
-      print('Ошибка настройки уведомлений: $e');
+      debugPrint('Не удалось настроить уведомления: $e');
     }
   }
 
-  Future<void> _saveTokenToFirebase(String token) async {
-    try {
-      final url = Uri.parse('https://pulse-day-default-rtdb.firebaseio.com/tokens/$token.json');
-      await http.put(url, body: json.encode({
-        "active": true,
-        "created": DateTime.now().toIso8601String()
-      }));
-    } catch (e) {
-      print('Ошибка сохранения токена: $e');
-    }
-  }
-
-  Future<void> _checkPrefs() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    List<String>? savedCategories = prefs.getStringList('selected_categories');
-
-    if (savedCategories != null && savedCategories.isNotEmpty) {
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => MainScreen()));
-    } else {
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => CategorySelectionScreen()));
-    }
+  Future<void> _openNextScreen() async {
+    final prefs = await SharedPreferences.getInstance();
+    final categories = prefs.getStringList('selected_categories') ?? [];
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (_) => categories.isNotEmpty
+            ? const MainScreen()
+            : const CategorySelectionScreen(),
+      ),
+    );
   }
 
   @override
-  Widget build(BuildContext context) {
-    return const Scaffold(body: Center(child: CircularProgressIndicator()));
-  }
+  Widget build(BuildContext context) =>
+      const Scaffold(body: Center(child: CircularProgressIndicator()));
 }
 
-// ============= ЭКРАН ВЫБОРА КАТЕГОРИЙ =============
 class CategorySelectionScreen extends StatefulWidget {
+  const CategorySelectionScreen({super.key});
+
   @override
-  _CategorySelectionScreenState createState() => _CategorySelectionScreenState();
+  State<CategorySelectionScreen> createState() =>
+      _CategorySelectionScreenState();
 }
 
 class _CategorySelectionScreenState extends State<CategorySelectionScreen> {
-  final Set<String> _selectedCategories = {};
-  final List<String> _categories = [
-    'Политика', 'Экономика', 'Технологии', 'Здоровье',
-    'Спорт', 'Культура', 'Общество', 'Происшествия'
+  final Set<String> selected = {};
+  final List<String> categories = const [
+    'Политика',
+    'Экономика',
+    'Технологии',
+    'Здоровье',
+    'Спорт',
+    'Культура',
+    'Общество',
+    'Происшествия',
   ];
 
-  void _saveCategories() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList('selected_categories', _selectedCategories.toList());
-    Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => MainScreen()));
+  Future<void> _save() async {
+    if (selected.length < 3) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('selected_categories', selected.toList());
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(builder: (_) => const MainScreen()),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('ДИС.Новости'), centerTitle: true),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            const Text(
-              'Приветствуем в ДИС.Новости!\nВыберите 3 и более категорий новостей, которые вас интересуют больше всего.',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 20),
-            Expanded(
-              child: ListView(
-                children: _categories.map((category) {
-                  return CheckboxListTile(
-                    title: Text(category),
-                    value: _selectedCategories.contains(category),
-                    onChanged: (bool? value) {
-                      setState(() {
-                        if (value == true) {
-                          _selectedCategories.add(category);
-                        } else {
-                          _selectedCategories.remove(category);
-                        }
-                      });
-                    },
-                  );
-                }).toList(),
+      appBar: AppBar(title: const Text('ДИС.Новости')),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            children: [
+              const SizedBox(height: 12),
+              const Icon(Icons.newspaper_rounded, size: 48, color: Color(0xFF2457A6)),
+              const SizedBox(height: 16),
+              const Text(
+                'Добро пожаловать в ДИС.Новости',
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                textAlign: TextAlign.center,
               ),
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: _selectedCategories.length >= 3 ? _saveCategories : null,
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 16),
-                textStyle: const TextStyle(fontSize: 16),
+              const SizedBox(height: 8),
+              const Text(
+                'Выберите не менее трёх тем, чтобы сформировать персональную ленту.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.black54, height: 1.4),
               ),
-              child: const Text('Продолжить'),
-            ),
-          ],
+              const SizedBox(height: 18),
+              Expanded(
+                child: ListView(
+                  children: categories.map((category) {
+                    return Card(
+                      elevation: 0,
+                      color: Colors.white,
+                      child: CheckboxListTile(
+                        value: selected.contains(category),
+                        title: Text(category),
+                        controlAffinity: ListTileControlAffinity.leading,
+                        onChanged: (value) => setState(() {
+                          if (value == true) {
+                            selected.add(category);
+                          } else {
+                            selected.remove(category);
+                          }
+                        }),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: selected.length >= 3 ? _save : null,
+                  child: Text('Продолжить (${selected.length}/3)'),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-// ============= ГЛАВНЫЙ ЭКРАН =============
 class MainScreen extends StatefulWidget {
+  const MainScreen({super.key});
+
   @override
-  _MainScreenState createState() => _MainScreenState();
+  State<MainScreen> createState() => _MainScreenState();
 }
 
 class _MainScreenState extends State<MainScreen> {
-  Map<String, dynamic>? _dailyData;
-  List<dynamic> _allNews = [];
-  List<dynamic> _digestNews = [];
-  List<String> _userCategories = [];
-  Map<String, String> _reactions = {};
-  bool _isLoading = true;
-  bool _isDigestExpanded = false;
-  String? _error;
-
-  final String _serverUrl = "http://201.24.53.232:8000/api/daily";
-  final String _yaraUrl = "http://201.24.53.232:8001/api/yara/chat";
-  final String _yaraAvatar = "http://201.24.53.232:8000/static/yara.png";
-  final String _userKey = "user_default";
+  Map<String, dynamic>? dailyData;
+  List<Map<String, dynamic>> allNews = [];
+  List<Map<String, dynamic>> digestNews = [];
+  List<Map<String, dynamic>> topNews = [];
+  List<String> userCategories = [];
+  Map<String, String> reactions = {};
+  bool loading = true;
+  bool digestExpanded = true;
+  String? error;
 
   @override
   void initState() {
     super.initState();
-    _loadData();
+    _load();
   }
 
-  Future<void> _loadData() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    _userCategories = prefs.getStringList('selected_categories') ?? [];
+  Future<void> _load() async {
+    final prefs = await SharedPreferences.getInstance();
+    userCategories = prefs.getStringList('selected_categories') ?? [];
     await _loadReactions();
     await _fetchData();
   }
 
   Future<void> _loadReactions() async {
     try {
-      final url = Uri.parse('https://pulse-day-default-rtdb.firebaseio.com/reactions/$_userKey.json');
-      final response = await http.get(url);
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        if (data != null) {
-          setState(() {
-            _reactions = Map<String, String>.from(data);
-          });
+      final response = await http
+          .get(Uri.parse('$firebaseDatabaseUrl/reactions/$userKey.json'))
+          .timeout(const Duration(seconds: 12));
+      if (response.statusCode == 200 && response.body != 'null') {
+        final decoded = jsonDecode(response.body);
+        if (decoded is Map) {
+          reactions = decoded.map(
+            (key, value) => MapEntry(key.toString(), value.toString()),
+          );
         }
       }
     } catch (e) {
-      print('Ошибка загрузки реакций: $e');
+      debugPrint('Ошибка загрузки реакций: $e');
     }
   }
 
-  Future<void> _saveReaction(String newsKey, String reaction) async {
-    try {
-      final url = Uri.parse('https://pulse-day-default-rtdb.firebaseio.com/reactions/$_userKey/$newsKey.json');
-      if (_reactions[newsKey] == reaction) {
-        await http.delete(url);
-        setState(() {
-          _reactions.remove(newsKey);
-        });
+  String _newsKey(Map<String, dynamic> item) {
+    final id = item['id']?.toString();
+    if (id != null && id.isNotEmpty) return id;
+    final link = item['link']?.toString() ?? '';
+    if (link.isNotEmpty) return Uri.encodeComponent(link).replaceAll('.', '_');
+    return Uri.encodeComponent(item['title']?.toString() ?? 'news');
+  }
+
+  Future<void> _saveReaction(Map<String, dynamic> item, String reaction) async {
+    final key = _newsKey(item);
+    final oldValue = reactions[key];
+    setState(() {
+      if (oldValue == reaction) {
+        reactions.remove(key);
       } else {
-        await http.put(url, body: json.encode(reaction));
-        setState(() {
-          _reactions[newsKey] = reaction;
-        });
+        reactions[key] = reaction;
+      }
+    });
+    try {
+      final uri = Uri.parse('$firebaseDatabaseUrl/reactions/$userKey/$key.json');
+      final response = oldValue == reaction
+          ? await http.delete(uri).timeout(const Duration(seconds: 10))
+          : await http
+              .put(
+                uri,
+                headers: {'Content-Type': 'application/json'},
+                body: jsonEncode(reaction),
+              )
+              .timeout(const Duration(seconds: 10));
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception('HTTP ${response.statusCode}');
       }
     } catch (e) {
-      print('Ошибка сохранения реакции: $e');
+      if (!mounted) return;
+      setState(() {
+        if (oldValue == reaction) {
+          reactions[key] = reaction;
+        } else {
+          reactions.remove(key);
+        }
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Не удалось сохранить реакцию')),
+      );
+      debugPrint('Ошибка сохранения реакции: $e');
     }
   }
 
   Future<void> _fetchData() async {
-    try {
-      setState(() => _isLoading = true);
-      final response = await http.get(Uri.parse(_serverUrl));
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        final allNews = data['news'] ?? [];
-
-        List<dynamic> digest = [];
-        for (var cat in _userCategories) {
-          final found = allNews.firstWhere((n) => n['category'] == cat, orElse: () => null);
-          if (found != null) digest.add(found);
-        }
-
-        if (digest.length < 3) {
-          for (var n in allNews) {
-            if (!digest.contains(n) && n['category'] != 'Регион') {
-              digest.add(n);
-              if (digest.length >= 3) break;
-            }
-          }
-        }
-
-        setState(() {
-          _dailyData = data;
-          _allNews = allNews;
-          _digestNews = digest;
-          _isLoading = false;
-        });
-      } else {
-        setState(() {
-          _error = "Ошибка сервера: ${response.statusCode}";
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
+    if (mounted) {
       setState(() {
-        _error = "Не удалось подключиться к серверу";
-        _isLoading = false;
+        loading = true;
+        error = null;
       });
+    }
+    try {
+      final response =
+          await http.get(Uri.parse(dailyUrl)).timeout(const Duration(seconds: 25));
+      if (response.statusCode != 200) {
+        throw Exception('Сервер вернул код ${response.statusCode}');
+      }
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map<String, dynamic>) {
+        throw const FormatException('Неверный формат ответа сервера');
+      }
+      final rawNews = decoded['news'];
+      final news = rawNews is List
+          ? rawNews
+              .whereType<Map>()
+              .map((item) => Map<String, dynamic>.from(item))
+              .where((item) => (item['title'] ?? '').toString().trim().isNotEmpty)
+              .toList()
+          : <Map<String, dynamic>>[];
+
+      // Персональный дайджест содержит только новости выбранных категорий.
+      // Если подходящих материалов меньше трёх, не подменяем их случайными.
+      final digest = <Map<String, dynamic>>[];
+      final usedIds = <String>{};
+      for (final category in userCategories) {
+        final match = news.cast<Map<String, dynamic>?>().firstWhere(
+              (item) =>
+                  item != null &&
+                  item['category']?.toString().toLowerCase() ==
+                      category.toLowerCase(),
+              orElse: () => null,
+            );
+        if (match != null) {
+          final key = _newsKey(match);
+          if (usedIds.add(key)) digest.add(match);
+        }
+      }
+
+      // Это подборка свежих федеральных событий, а не редакционный рейтинг.
+      final federal = news.where((item) {
+        final scope = (item['scope'] ?? '').toString().toLowerCase();
+        return scope == 'federal';
+      }).toList()
+        ..sort((a, b) => _timestamp(b).compareTo(_timestamp(a)));
+
+      if (!mounted) return;
+      setState(() {
+        dailyData = decoded;
+        allNews = news;
+        digestNews = digest;
+        topNews = federal.take(5).toList();
+        loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        error = 'Не удалось загрузить новости. Проверьте подключение и попробуйте ещё раз.';
+        loading = false;
+      });
+      debugPrint('Ошибка загрузки ленты: $e');
     }
   }
 
-  void _openYara(BuildContext context) {
+  double _timestamp(Map<String, dynamic> item) {
+    final value = item['timestamp'];
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value) ?? 0;
+    return 0;
+  }
+
+  void _openYara() {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => YaraScreen(yaraUrl: _yaraUrl, yaraAvatar: _yaraAvatar),
+      builder: (_) => const YaraScreen(),
     );
+  }
+
+  Future<void> _openNews(Map<String, dynamic> item) async {
+    final link = item['link']?.toString() ?? '';
+    final uri = Uri.tryParse(link);
+    if (uri == null || !uri.hasScheme) return;
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
+  Future<void> _shareNews(Map<String, dynamic> item) async {
+    final title = item['title']?.toString() ?? 'Новость';
+    final link = item['link']?.toString() ?? '';
+    await Share.share('$title\n\nЧитать: $link\n\n— ДИС.Новости');
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('ДИС.Новости'),
-        centerTitle: true,
+        title: const Text(
+          'ДИС.Новости',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
         actions: [
-          IconButton(
-            icon: ClipOval(
-              child: Image.network(
-                _yaraAvatar,
-                width: 32,
-                height: 32,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) => const Icon(Icons.auto_awesome),
-              ),
-            ),
-            tooltip: 'Спроси Яру',
-            onPressed: () => _openYara(context),
+          TextButton.icon(
+            onPressed: _openYara,
+            icon: const Icon(Icons.auto_awesome, size: 19),
+            label: const Text('Спросить Яру'),
           ),
-          IconButton(icon: const Icon(Icons.refresh), onPressed: _fetchData),
+          IconButton(
+            tooltip: 'Обновить новости',
+            onPressed: loading ? null : _fetchData,
+            icon: const Icon(Icons.refresh),
+          ),
         ],
       ),
-      body: _isLoading
+      body: loading
           ? const Center(child: CircularProgressIndicator())
-          : _error != null
-              ? Center(child: Text(_error!))
-              : _dailyData == null
-                  ? const Center(child: Text('Нет данных'))
-                  : _buildContent(),
-      bottomNavigationBar: BottomNavigationBar(
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Главная'),
-          BottomNavigationBarItem(icon: Icon(Icons.list), label: 'Новости'),
-          BottomNavigationBarItem(icon: Icon(Icons.edit), label: 'Редакция'),
+          : error != null
+              ? _ErrorView(message: error!, onRetry: _fetchData)
+              : RefreshIndicator(
+                  onRefresh: _fetchData,
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                    children: [
+                      _WeatherCard(weather: _asMap(dailyData?['weather'])),
+                      const SizedBox(height: 20),
+                      _sectionHeading('Ваш персональный дайджест',
+                          subtitle: 'Новости по выбранным темам'),
+                      const SizedBox(height: 10),
+                      _DigestPanel(
+                        news: digestNews,
+                        expanded: digestExpanded,
+                        onToggle: () =>
+                            setState(() => digestExpanded = !digestExpanded),
+                        reactions: reactions,
+                        newsKey: _newsKey,
+                        onReact: _saveReaction,
+                        onOpen: _openNews,
+                        onShare: _shareNews,
+                      ),
+                      const SizedBox(height: 22),
+                      _sectionHeading(
+                        'Что сегодня произошло важного?',
+                        subtitle: 'Свежие федеральные события',
+                      ),
+                      const SizedBox(height: 10),
+                      if (topNews.isEmpty)
+                        const _EmptyPanel(
+                          text: 'Пока нет подходящих федеральных новостей.',
+                        )
+                      else
+                        ...topNews.map((item) => _NewsCard(
+                              item: item,
+                              reaction: reactions[_newsKey(item)],
+                              onReact: (value) => _saveReaction(item, value),
+                              onOpen: () => _openNews(item),
+                              onShare: () => _shareNews(item),
+                            )),
+                      const SizedBox(height: 22),
+                      _sectionHeading(
+                        'Последние новости',
+                        subtitle: 'Общая лента ДИС',
+                        trailing: TextButton(
+                          onPressed: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => NewsListScreen(
+                                news: allNews,
+                                reactions: reactions,
+                                newsKey: _newsKey,
+                                onReact: _saveReaction,
+                                onOpen: _openNews,
+                                onShare: _shareNews,
+                              ),
+                            ),
+                          ),
+                          child: const Text('Все'),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      ...allNews.take(8).map((item) => _NewsCard(
+                            item: item,
+                            reaction: reactions[_newsKey(item)],
+                            onReact: (value) => _saveReaction(item, value),
+                            onOpen: () => _openNews(item),
+                            onShare: () => _shareNews(item),
+                          )),
+                      const SizedBox(height: 12),
+                      _YaraInvite(onTap: _openYara),
+                    ],
+                  ),
+                ),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: 0,
+        destinations: const [
+          NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Главная'),
+          NavigationDestination(icon: Icon(Icons.newspaper_outlined), label: 'Новости'),
+          NavigationDestination(icon: Icon(Icons.edit_note), label: 'Редакция'),
         ],
-        onTap: (index) {
+        onDestinationSelected: (index) {
           if (index == 1) {
-            Navigator.push(context, MaterialPageRoute(
-              builder: (_) => NewsListScreen(
-                news: _allNews,
-                reactions: _reactions,
-                onReact: _saveReaction,
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => NewsListScreen(
+                  news: allNews,
+                  reactions: reactions,
+                  newsKey: _newsKey,
+                  onReact: _saveReaction,
+                  onOpen: _openNews,
+                  onShare: _shareNews,
+                ),
               ),
-            ));
+            ).then((_) => setState(() {}));
           } else if (index == 2) {
-            Navigator.push(context, MaterialPageRoute(builder: (_) => EditorialScreen()));
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const EditorialScreen()),
+            );
           }
         },
       ),
     );
   }
 
-  Widget _buildContent() {
-    final weather = _dailyData!['weather'] ?? {};
-    return RefreshIndicator(
-      onRefresh: _fetchData,
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildWeatherCard(weather),
-            const SizedBox(height: 16),
-            _buildDigestSection(),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildWeatherCard(Map<String, dynamic> weather) {
-    IconData weatherIcon = Icons.wb_sunny;
-    String condition = weather['condition'] ?? '';
-    if (condition.contains('Дождь') || condition.contains('Ливень') || condition.contains('Морось')) {
-      weatherIcon = Icons.grain;
-    } else if (condition.contains('Снег')) {
-      weatherIcon = Icons.ac_unit;
-    } else if (condition.contains('Гроза')) {
-      weatherIcon = Icons.flash_on;
-    } else if (condition.contains('Туман')) {
-      weatherIcon = Icons.foggy;
-    } else if (condition.contains('Облачно') || condition.contains('Малооблачно')) {
-      weatherIcon = Icons.cloud_queue;
-    }
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(colors: [Colors.blue.shade400, Colors.blue.shade700], begin: Alignment.topLeft, end: Alignment.bottomRight),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Row(
-        children: [
-          Icon(weatherIcon, color: Colors.white, size: 40),
-          const SizedBox(width: 16),
-          Column(
+  Widget _sectionHeading(String title,
+      {String? subtitle, Widget? trailing}) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('${weather['temp'] ?? '--'}°C', style: const TextStyle(color: Colors.white, fontSize: 24)),
-              Text(condition, style: const TextStyle(color: Colors.white70)),
+              Text(title,
+                  style: const TextStyle(
+                      fontSize: 19, fontWeight: FontWeight.bold)),
+              if (subtitle != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 3),
+                  child: Text(subtitle,
+                      style:
+                          const TextStyle(color: Colors.black54, fontSize: 12)),
+                ),
             ],
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDigestSection() {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(colors: [Colors.deepPurple.shade400, Colors.deepPurple.shade700], begin: Alignment.topLeft, end: Alignment.bottomRight),
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: const [BoxShadow(blurRadius: 8, offset: Offset(0, 4))],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          InkWell(
-            onTap: () => setState(() => _isDigestExpanded = !_isDigestExpanded),
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Row(
-                children: [
-                  const Icon(Icons.auto_awesome, color: Colors.white, size: 28),
-                  const SizedBox(width: 10),
-                  const Expanded(
-                    child: Text('Ваш персональный дайджест готов',
-                      style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-                  ),
-                  Icon(_isDigestExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down, color: Colors.white),
-                ],
-              ),
-            ),
-          ),
-          if (_isDigestExpanded) ...[
-            ..._digestNews.map((news) => _buildDigestCard(news)),
-            const SizedBox(height: 8),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDigestCard(Map<String, dynamic> news) {
-    final newsKey = (news['link'] ?? news['title'] ?? '').hashCode.toString();
-    final reaction = _reactions[newsKey];
-
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(news['category'] ?? '', style: const TextStyle(color: Colors.deepPurple, fontSize: 12, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 4),
-          Text(news['title'] ?? 'Без названия', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold), maxLines: 2, overflow: TextOverflow.ellipsis),
-          const SizedBox(height: 4),
-          Text(news['description'] ?? '', style: const TextStyle(fontSize: 12, color: Colors.grey), maxLines: 2, overflow: TextOverflow.ellipsis),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              _buildReactionButton(
-                icon: reaction == 'like' ? Icons.thumb_up : Icons.thumb_up_outlined,
-                active: reaction == 'like',
-                onTap: () => _saveReaction(newsKey, 'like'),
-              ),
-              const SizedBox(width: 12),
-              _buildReactionButton(
-                icon: reaction == 'dislike' ? Icons.thumb_down : Icons.thumb_down_outlined,
-                active: reaction == 'dislike',
-                onTap: () => _saveReaction(newsKey, 'dislike'),
-              ),
-              const Spacer(),
-              IconButton(
-                icon: const Icon(Icons.share, size: 20, color: Colors.blue),
-                tooltip: 'Поделиться',
-                onPressed: () => _shareNews(news),
-              ),
-              InkWell(
-                onTap: () async {
-                  final url = news['link'] ?? '';
-                  if (url.isNotEmpty) await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-                },
-                child: const Text('Читать →', style: TextStyle(color: Colors.blue, fontSize: 12, decoration: TextDecoration.underline)),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildReactionButton({required IconData icon, required bool active, required VoidCallback onTap}) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(20),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        child: Icon(
-          icon,
-          size: 22,
-          color: active ? Colors.deepPurple : Colors.grey,
         ),
-      ),
-    );
-  }
-
-  void _shareNews(Map<String, dynamic> news) {
-    final title = news['title'] ?? 'Новость';
-    final link = news['link'] ?? '';
-    final text = '$title\n\nЧитать: $link\n\n— ДИС.Новости';
-
-    showModalBottomSheet(
-      context: context,
-      builder: (_) => Container(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Поделиться', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 20),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _buildShareOption(
-                  icon: Icons.chat,
-                  label: 'ВК',
-                  color: Colors.blue.shade700,
-                  onTap: () {
-                    final url = 'https://vk.com/share.php?url=${Uri.encodeComponent(link)}&title=${Uri.encodeComponent(title)}';
-                    launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-                    Navigator.pop(context);
-                  },
-                ),
-                _buildShareOption(
-                  icon: Icons.send,
-                  label: 'Telegram',
-                  color: Colors.blue.shade400,
-                  onTap: () {
-                    final url = 'https://t.me/share/url?url=${Uri.encodeComponent(link)}&text=${Uri.encodeComponent(title)}';
-                    launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-                    Navigator.pop(context);
-                  },
-                ),
-                _buildShareOption(
-                  icon: Icons.copy,
-                  label: 'Копировать',
-                  color: Colors.grey.shade700,
-                  onTap: () {
-                    Share.share(text);
-                    Navigator.pop(context);
-                  },
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildShareOption({required IconData icon, required String label, required Color color, required VoidCallback onTap}) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Column(
-        children: [
-          Container(
-            width: 60,
-            height: 60,
-            decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(16)),
-            child: Icon(icon, color: Colors.white, size: 30),
-          ),
-          const SizedBox(height: 8),
-          Text(label, style: const TextStyle(fontSize: 12)),
-        ],
-      ),
+        if (trailing != null) trailing,
+      ],
     );
   }
 }
 
-// ============= ЭКРАН ВСЕХ НОВОСТЕЙ =============
-class NewsListScreen extends StatelessWidget {
-  final List<dynamic> news;
-  final Map<String, String> reactions;
-  final Function(String, String) onReact;
+Map<String, dynamic> _asMap(dynamic value) {
+  if (value is Map) return Map<String, dynamic>.from(value);
+  return <String, dynamic>{};
+}
 
-  const NewsListScreen({Key? key, required this.news, required this.reactions, required this.onReact}) : super(key: key);
+class _ErrorView extends StatelessWidget {
+  final String message;
+  final VoidCallback onRetry;
+  const _ErrorView({required this.message, required this.onRetry});
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Все новости'), centerTitle: true),
-      body: news.isEmpty
-          ? const Center(child: Text('Новостей пока нет'))
-          : ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: news.length,
-              itemBuilder: (context, index) {
-                final item = news[index];
-                final newsKey = (item['link'] ?? item['title'] ?? '').hashCode.toString();
-                final reaction = reactions[newsKey];
-
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(item['title'] ?? 'Без названия',
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                          maxLines: 3, overflow: TextOverflow.ellipsis),
-                        const SizedBox(height: 4),
-                        Text(item['description'] ?? '',
-                          maxLines: 4, overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                        const SizedBox(height: 4),
-                        Text('Категория: ${item['category'] ?? 'Другое'}',
-                          style: const TextStyle(fontSize: 10, color: Colors.blue)),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            InkWell(
-                              onTap: () => onReact(newsKey, 'like'),
-                              child: Padding(
-                                padding: const EdgeInsets.all(8),
-                                child: Icon(
-                                  reaction == 'like' ? Icons.thumb_up : Icons.thumb_up_outlined,
-                                  size: 20,
-                                  color: reaction == 'like' ? Colors.deepPurple : Colors.grey,
-                                ),
-                              ),
-                            ),
-                            InkWell(
-                              onTap: () => onReact(newsKey, 'dislike'),
-                              child: Padding(
-                                padding: const EdgeInsets.all(8),
-                                child: Icon(
-                                  reaction == 'dislike' ? Icons.thumb_down : Icons.thumb_down_outlined,
-                                  size: 20,
-                                  color: reaction == 'dislike' ? Colors.deepPurple : Colors.grey,
-                                ),
-                              ),
-                            ),
-                            const Spacer(),
-                            IconButton(
-                              icon: const Icon(Icons.share, size: 20, color: Colors.blue),
-                              onPressed: () {
-                                final title = item['title'] ?? 'Новость';
-                                final link = item['link'] ?? '';
-                                final text = '$title\n\nЧитать: $link\n\n— ДИС.Новости';
-                                Share.share(text);
-                              },
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.cloud_off, size: 48, color: Colors.grey),
+            const SizedBox(height: 12),
+            Text(message, textAlign: TextAlign.center),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Повторить'),
             ),
+          ],
+        ),
+      ),
     );
   }
 }
 
-// ============= ЭКРАН РЕДАКЦИИ =============
-class EditorialScreen extends StatefulWidget {
+class _WeatherCard extends StatelessWidget {
+  final Map<String, dynamic> weather;
+  const _WeatherCard({required this.weather});
+
   @override
-  _EditorialScreenState createState() => _EditorialScreenState();
+  Widget build(BuildContext context) {
+    final condition = (weather['condition'] ?? 'Погода не указана').toString();
+    final temp = weather['temp'] ?? weather['temperature'] ?? '--';
+    IconData icon = Icons.wb_cloudy_outlined;
+    final lower = condition.toLowerCase();
+    if (lower.contains('солн') || lower.contains('ясно')) {
+      icon = Icons.wb_sunny_outlined;
+    } else if (lower.contains('дожд') || lower.contains('лив')) {
+      icon = Icons.grain;
+    } else if (lower.contains('снег')) {
+      icon = Icons.ac_unit;
+    } else if (lower.contains('гроз')) {
+      icon = Icons.thunderstorm;
+    } else if (lower.contains('туман')) {
+      icon = Icons.foggy;
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF2457A6), Color(0xFF4388C9)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: Colors.white, size: 42),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('$temp°C',
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 27,
+                        fontWeight: FontWeight.bold)),
+                Text(condition,
+                    style: const TextStyle(color: Colors.white70)),
+                if (weather['city'] != null)
+                  Text(weather['city'].toString(),
+                      style: const TextStyle(
+                          color: Colors.white70, fontSize: 12)),
+              ],
+            ),
+          ),
+          const Icon(Icons.location_on_outlined, color: Colors.white70),
+        ],
+      ),
+    );
+  }
+}
+
+class _DigestPanel extends StatelessWidget {
+  final List<Map<String, dynamic>> news;
+  final bool expanded;
+  final VoidCallback onToggle;
+  final Map<String, String> reactions;
+  final String Function(Map<String, dynamic>) newsKey;
+  final Future<void> Function(Map<String, dynamic>, String) onReact;
+  final Future<void> Function(Map<String, dynamic>) onOpen;
+  final Future<void> Function(Map<String, dynamic>) onShare;
+
+  const _DigestPanel({
+    required this.news,
+    required this.expanded,
+    required this.onToggle,
+    required this.reactions,
+    required this.newsKey,
+    required this.onReact,
+    required this.onOpen,
+    required this.onShare,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      elevation: 0,
+      color: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      child: Column(
+        children: [
+          ListTile(
+            onTap: onToggle,
+            leading: const CircleAvatar(
+              backgroundColor: Color(0xFFECE7FA),
+              child: Icon(Icons.auto_awesome, color: Color(0xFF6844A5)),
+            ),
+            title: const Text('Подборка для вас',
+                style: TextStyle(fontWeight: FontWeight.bold)),
+            subtitle: Text('Подходящих новостей: ${news.length}'),
+            trailing: Icon(expanded ? Icons.expand_less : Icons.expand_more),
+          ),
+          if (expanded)
+            if (news.isEmpty)
+              const Padding(
+                padding: EdgeInsets.fromLTRB(16, 0, 16, 18),
+                child: _EmptyPanel(
+                  text:
+                      'Пока нет новостей по выбранным категориям. Обновите ленту позже.',
+                ),
+              )
+            else
+              ...news.map((item) => _CompactNewsTile(
+                    item: item,
+                    reaction: reactions[newsKey(item)],
+                    onReact: (value) => onReact(item, value),
+                    onOpen: () => onOpen(item),
+                    onShare: () => onShare(item),
+                  )),
+        ],
+      ),
+    );
+  }
+}
+
+class _CompactNewsTile extends StatelessWidget {
+  final Map<String, dynamic> item;
+  final String? reaction;
+  final ValueChanged<String> onReact;
+  final VoidCallback onOpen;
+  final VoidCallback onShare;
+
+  const _CompactNewsTile({
+    required this.item,
+    required this.reaction,
+    required this.onReact,
+    required this.onOpen,
+    required this.onShare,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onOpen,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _MetadataLine(item: item),
+            const SizedBox(height: 5),
+            Text(item['title']?.toString() ?? 'Без названия',
+                style: const TextStyle(
+                    fontWeight: FontWeight.w600, fontSize: 15, height: 1.3)),
+            if ((item['description'] ?? '').toString().isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(item['description'].toString(),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      color: Colors.black54, fontSize: 12, height: 1.35)),
+            ],
+            _ReactionRow(
+              reaction: reaction,
+              onReact: onReact,
+              onShare: onShare,
+              onOpen: onOpen,
+            ),
+            const Divider(height: 1),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _NewsCard extends StatelessWidget {
+  final Map<String, dynamic> item;
+  final String? reaction;
+  final ValueChanged<String> onReact;
+  final VoidCallback onOpen;
+  final VoidCallback onShare;
+
+  const _NewsCard({
+    required this.item,
+    required this.reaction,
+    required this.onReact,
+    required this.onOpen,
+    required this.onShare,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      elevation: 0,
+      margin: const EdgeInsets.only(bottom: 10),
+      color: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: onOpen,
+        child: Padding(
+          padding: const EdgeInsets.all(15),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _MetadataLine(item: item),
+              const SizedBox(height: 7),
+              Text(
+                item['title']?.toString() ?? 'Без названия',
+                style: const TextStyle(
+                    fontSize: 16, fontWeight: FontWeight.bold, height: 1.3),
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+              ),
+              if ((item['description'] ?? '').toString().trim().isNotEmpty) ...[
+                const SizedBox(height: 7),
+                Text(
+                  item['description'].toString(),
+                  style: const TextStyle(
+                      color: Colors.black54, fontSize: 13, height: 1.4),
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+              _ReactionRow(
+                reaction: reaction,
+                onReact: onReact,
+                onShare: onShare,
+                onOpen: onOpen,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MetadataLine extends StatelessWidget {
+  final Map<String, dynamic> item;
+  const _MetadataLine({required this.item});
+
+  @override
+  Widget build(BuildContext context) {
+    final category = (item['category'] ?? 'Новости').toString();
+    final source = (item['source'] ?? '').toString();
+    final region = (item['region'] ?? '').toString();
+    final scope = (item['scope'] ?? '').toString();
+    final label = scope == 'federal'
+        ? 'Федеральная'
+        : (region.isNotEmpty ? region : 'Новости');
+    return Wrap(
+      spacing: 7,
+      runSpacing: 4,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        _SmallTag(text: category, color: const Color(0xFFEAF0FC)),
+        _SmallTag(text: label, color: const Color(0xFFF0F2F5)),
+        if (source.isNotEmpty)
+          Text(source,
+              style: const TextStyle(color: Colors.black45, fontSize: 10)),
+        if (item['timestamp'] != null)
+          Text(_formatTimestamp(item['timestamp']),
+              style: const TextStyle(color: Colors.black45, fontSize: 10)),
+      ],
+    );
+  }
+}
+
+class _SmallTag extends StatelessWidget {
+  final String text;
+  final Color color;
+  const _SmallTag({required this.text, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration:
+          BoxDecoration(color: color, borderRadius: BorderRadius.circular(20)),
+      child: Text(text,
+          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600)),
+    );
+  }
+}
+
+String _formatTimestamp(dynamic raw) {
+  DateTime? date;
+  if (raw is num) {
+    date = DateTime.fromMillisecondsSinceEpoch(raw.toInt() * 1000);
+  } else if (raw is String) {
+    date = DateTime.tryParse(raw);
+    final numeric = double.tryParse(raw);
+    if (date == null && numeric != null) {
+      date = DateTime.fromMillisecondsSinceEpoch(numeric.toInt() * 1000);
+    }
+  }
+  if (date == null) return '';
+  final local = date.toLocal();
+  final hh = local.hour.toString().padLeft(2, '0');
+  final mm = local.minute.toString().padLeft(2, '0');
+  return '${local.day.toString().padLeft(2, '0')}.'
+      '${local.month.toString().padLeft(2, '0')} $hh:$mm';
+}
+
+class _ReactionRow extends StatelessWidget {
+  final String? reaction;
+  final ValueChanged<String> onReact;
+  final VoidCallback onShare;
+  final VoidCallback onOpen;
+
+  const _ReactionRow({
+    required this.reaction,
+    required this.onReact,
+    required this.onShare,
+    required this.onOpen,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        IconButton(
+          visualDensity: VisualDensity.compact,
+          tooltip: 'Нравится',
+          onPressed: () => onReact('like'),
+          icon: Icon(
+            reaction == 'like' ? Icons.thumb_up : Icons.thumb_up_outlined,
+            size: 19,
+            color: reaction == 'like' ? Colors.indigo : Colors.grey,
+          ),
+        ),
+        IconButton(
+          visualDensity: VisualDensity.compact,
+          tooltip: 'Не нравится',
+          onPressed: () => onReact('dislike'),
+          icon: Icon(
+            reaction == 'dislike'
+                ? Icons.thumb_down
+                : Icons.thumb_down_outlined,
+            size: 19,
+            color: reaction == 'dislike' ? Colors.indigo : Colors.grey,
+          ),
+        ),
+        const Spacer(),
+        TextButton.icon(
+          onPressed: onShare,
+          icon: const Icon(Icons.share_outlined, size: 17),
+          label: const Text('Поделиться'),
+        ),
+        TextButton(
+          onPressed: onOpen,
+          child: const Text('Читать'),
+        ),
+      ],
+    );
+  }
+}
+
+class _EmptyPanel extends StatelessWidget {
+  final String text;
+  const _EmptyPanel({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF4F6FA),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(text,
+          style: const TextStyle(color: Colors.black54, height: 1.4)),
+    );
+  }
+}
+
+class _YaraInvite extends StatelessWidget {
+  final VoidCallback onTap;
+  const _YaraInvite({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      elevation: 0,
+      color: const Color(0xFFF0EAF8),
+      child: ListTile(
+        onTap: onTap,
+        leading: CircleAvatar(
+          backgroundColor: Colors.white,
+          child: Image.network(
+            yaraAvatarUrl,
+            width: 34,
+            height: 34,
+            errorBuilder: (_, __, ___) =>
+                const Icon(Icons.auto_awesome, color: Colors.deepPurple),
+          ),
+        ),
+        title: const Text('Есть вопрос? Спросите Яру',
+            style: TextStyle(fontWeight: FontWeight.bold)),
+        subtitle: const Text('Новости, погода и ответы на ваши вопросы'),
+        trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+      ),
+    );
+  }
+}
+
+class NewsListScreen extends StatefulWidget {
+  final List<Map<String, dynamic>> news;
+  final Map<String, String> reactions;
+  final String Function(Map<String, dynamic>) newsKey;
+  final Future<void> Function(Map<String, dynamic>, String) onReact;
+  final Future<void> Function(Map<String, dynamic>) onOpen;
+  final Future<void> Function(Map<String, dynamic>) onShare;
+
+  const NewsListScreen({
+    super.key,
+    required this.news,
+    required this.reactions,
+    required this.newsKey,
+    required this.onReact,
+    required this.onOpen,
+    required this.onShare,
+  });
+
+  @override
+  State<NewsListScreen> createState() => _NewsListScreenState();
+}
+
+class _NewsListScreenState extends State<NewsListScreen> {
+  String selectedCategory = 'Все';
+
+  @override
+  Widget build(BuildContext context) {
+    final categories = <String>{
+      'Все',
+      ...widget.news.map((item) => (item['category'] ?? 'Другое').toString()),
+    }.toList();
+    final filtered = selectedCategory == 'Все'
+        ? widget.news
+        : widget.news
+            .where((item) => item['category'] == selectedCategory)
+            .toList();
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Все новости')),
+      body: Column(
+        children: [
+          SizedBox(
+            height: 54,
+            child: ListView.separated(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              scrollDirection: Axis.horizontal,
+              itemCount: categories.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 7),
+              itemBuilder: (context, index) {
+                final category = categories[index];
+                return ChoiceChip(
+                  label: Text(category),
+                  selected: selectedCategory == category,
+                  onSelected: (_) =>
+                      setState(() => selectedCategory = category),
+                );
+              },
+            ),
+          ),
+          Expanded(
+            child: filtered.isEmpty
+                ? const Center(child: Text('В этой категории пока нет новостей'))
+                : ListView.builder(
+                    padding: const EdgeInsets.all(14),
+                    itemCount: filtered.length,
+                    itemBuilder: (context, index) {
+                      final item = filtered[index];
+                      return _NewsCard(
+                        item: item,
+                        reaction: widget.reactions[widget.newsKey(item)],
+                        onReact: (value) => widget.onReact(item, value),
+                        onOpen: () => widget.onOpen(item),
+                        onShare: () => widget.onShare(item),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class EditorialScreen extends StatefulWidget {
+  const EditorialScreen({super.key});
+
+  @override
+  State<EditorialScreen> createState() => _EditorialScreenState();
 }
 
 class _EditorialScreenState extends State<EditorialScreen> {
-  List<dynamic> _articles = [];
-  bool _isLoading = true;
-  String? _error;
-
-  final String _editorialUrl = "http://201.24.53.232:8000/api/editorial";
+  List<Map<String, dynamic>> articles = [];
+  bool loading = true;
+  String? error;
 
   @override
   void initState() {
@@ -667,64 +1101,33 @@ class _EditorialScreenState extends State<EditorialScreen> {
 
   Future<void> _fetchEditorial() async {
     try {
-      final response = await http.get(Uri.parse(_editorialUrl));
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
+      final response = await http
+          .get(Uri.parse(editorialUrl))
+          .timeout(const Duration(seconds: 20));
+      if (response.statusCode != 200) {
+        throw Exception('HTTP ${response.statusCode}');
+      }
+      final decoded = jsonDecode(response.body);
+      final raw = decoded is Map ? decoded['articles'] : null;
+      articles = raw is List
+          ? raw
+              .whereType<Map>()
+              .map((item) => Map<String, dynamic>.from(item))
+              .toList()
+          : [];
+      if (mounted) setState(() => loading = false);
+    } catch (e) {
+      if (mounted) {
         setState(() {
-          _articles = data['articles'] ?? [];
-          _isLoading = false;
-        });
-      } else {
-        setState(() {
-          _error = "Ошибка загрузки статей";
-          _isLoading = false;
+          error = 'Не удалось загрузить материалы редакции.';
+          loading = false;
         });
       }
-    } catch (e) {
-      setState(() {
-        _error = "Не удалось подключиться к серверу";
-        _isLoading = false;
-      });
+      debugPrint('Ошибка редакции: $e');
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Редакция ДИС'), centerTitle: true),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-              ? Center(child: Text(_error!))
-              : _articles.isEmpty
-                  ? const Center(child: Text('Статей пока нет'))
-                  : ListView.builder(
-                      padding: const EdgeInsets.all(16),
-                      itemCount: _articles.length,
-                      itemBuilder: (context, index) {
-                        final article = _articles[index];
-                        return Card(
-                          margin: const EdgeInsets.only(bottom: 12),
-                          child: ListTile(
-                            title: Text(article['title'] ?? 'Без названия'),
-                            subtitle: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const SizedBox(height: 4),
-                                Text(article['short_description'] ?? '', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                                const SizedBox(height: 4),
-                                Text(article['date'] ?? '', style: const TextStyle(fontSize: 10, color: Colors.grey)),
-                              ],
-                            ),
-                            onTap: () => _showFullArticle(context, article),
-                          ),
-                        );
-                      },
-                    ),
-    );
-  }
-
-  void _showFullArticle(BuildContext context, Map<String, dynamic> article) {
+  void _showArticle(Map<String, dynamic> article) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -733,99 +1136,152 @@ class _EditorialScreenState extends State<EditorialScreen> {
         minChildSize: 0.5,
         maxChildSize: 0.95,
         expand: false,
-        builder: (context, scrollController) => Container(
-          padding: const EdgeInsets.all(24),
-          child: SingleChildScrollView(
-            controller: scrollController,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(article['title'] ?? 'Статья', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 8),
-                Text('${article['author'] ?? 'Редакция ДИС'} • ${article['date'] ?? ''}'),
-                const Divider(),
-                const SizedBox(height: 8),
-                Text(article['full_text'] ?? 'Текст отсутствует', style: const TextStyle(fontSize: 16, height: 1.6)),
-                const SizedBox(height: 24),
-              ],
-            ),
+        builder: (context, controller) => Material(
+          color: Colors.white,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+          child: ListView(
+            controller: controller,
+            padding: const EdgeInsets.all(22),
+            children: [
+              Text(article['title']?.toString() ?? 'Статья',
+                  style: const TextStyle(
+                      fontSize: 23, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              Text(
+                '${article['author'] ?? 'Редакция ДИС'} • ${article['date'] ?? ''}',
+                style: const TextStyle(color: Colors.black54),
+              ),
+              const Divider(height: 28),
+              Text(article['full_text']?.toString() ??
+                  article['text']?.toString() ??
+                  'Текст пока не опубликован.'),
+            ],
           ),
         ),
       ),
     );
   }
-}
-
-// ============= ЭКРАН ЯРЫ =============
-class YaraScreen extends StatefulWidget {
-  final String yaraUrl;
-  final String yaraAvatar;
-  const YaraScreen({Key? key, required this.yaraUrl, required this.yaraAvatar}) : super(key: key);
 
   @override
-  _YaraScreenState createState() => _YaraScreenState();
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Редакция ДИС')),
+      body: loading
+          ? const Center(child: CircularProgressIndicator())
+          : error != null
+              ? Center(child: Text(error!))
+              : articles.isEmpty
+                  ? const Center(child: Text('Редакционных материалов пока нет'))
+                  : ListView.builder(
+                      padding: const EdgeInsets.all(14),
+                      itemCount: articles.length,
+                      itemBuilder: (context, index) {
+                        final article = articles[index];
+                        return Card(
+                          elevation: 0,
+                          margin: const EdgeInsets.only(bottom: 10),
+                          child: ListTile(
+                            contentPadding: const EdgeInsets.all(14),
+                            title: Text(
+                              article['title']?.toString() ?? 'Без названия',
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            subtitle: Padding(
+                              padding: const EdgeInsets.only(top: 6),
+                              child: Text(
+                                article['short_description']?.toString() ??
+                                    '',
+                                maxLines: 3,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            trailing: const Icon(Icons.chevron_right),
+                            onTap: () => _showArticle(article),
+                          ),
+                        );
+                      },
+                    ),
+    );
+  }
+}
+
+class YaraScreen extends StatefulWidget {
+  const YaraScreen({super.key});
+
+  @override
+  State<YaraScreen> createState() => _YaraScreenState();
 }
 
 class _YaraScreenState extends State<YaraScreen> {
-  final TextEditingController _controller = TextEditingController();
-  final ScrollController _scrollController = ScrollController();
-  final List<Map<String, String>> _messages = [];
-  bool _isLoading = false;
+  final TextEditingController controller = TextEditingController();
+  final ScrollController scrollController = ScrollController();
+  final List<Map<String, String>> messages = [
+    {
+      'role': 'bot',
+      'text':
+          'Привет! Я Яра — новостная помощница ДИС. Задай вопрос о новостях или попроси помочь разобраться в теме.'
+    }
+  ];
+  bool sending = false;
 
   @override
-  void initState() {
-    super.initState();
-    _messages.add({
-      "role": "bot",
-      "text": "Привет! 👋 Я Яра — твоя умная новостная помощница.\n\nЯ умею:\n• 📰 Искать новости по темам\n• 🌤 Рассказывать о погоде\n• 💱 Показывать курсы валют\n• 🎯 Отвечать на вопросы\n\nСпроси меня о чём-нибудь!"
-    });
+  void dispose() {
+    controller.dispose();
+    scrollController.dispose();
+    super.dispose();
   }
 
-  Future<void> _sendQuestion() async {
-    final question = _controller.text.trim();
-    if (question.isEmpty || _isLoading) return;
-
+  Future<void> _send() async {
+    final question = controller.text.trim();
+    if (question.isEmpty || sending) return;
     setState(() {
-      _messages.add({"role": "user", "text": question});
-      _isLoading = true;
-      _controller.clear();
+      messages.add({'role': 'user', 'text': question});
+      sending = true;
+      controller.clear();
     });
     _scrollToBottom();
-
     try {
-      final response = await http.post(
-        Uri.parse(widget.yaraUrl),
-        headers: {"Content-Type": "application/json"},
-        body: json.encode({"user_id": "user_default", "message": question}),
-      );
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        setState(() {
-          _messages.add({"role": "bot", "text": data['answer'] ?? 'Ошибка'});
-          _isLoading = false;
-        });
-      } else {
-        setState(() {
-          _messages.add({"role": "bot", "text": 'Ошибка сервера: ${response.statusCode}'});
-          _isLoading = false;
-        });
+      final response = await http
+          .post(
+            Uri.parse(yaraUrl),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'user_id': userKey, 'message': question}),
+          )
+          .timeout(const Duration(seconds: 130));
+      if (response.statusCode != 200) {
+        throw Exception('HTTP ${response.statusCode}');
       }
-    } catch (e) {
+      final decoded = jsonDecode(response.body);
+      final answer = decoded is Map
+          ? (decoded['answer'] ?? decoded['response'] ?? 'Я не получила ответ.')
+              .toString()
+          : 'Сервер вернул неожиданный ответ.';
+      if (!mounted) return;
       setState(() {
-        _messages.add({"role": "bot", "text": 'Не удалось подключиться'});
-        _isLoading = false;
+        messages.add({'role': 'bot', 'text': answer});
+        sending = false;
       });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        messages.add({
+          'role': 'bot',
+          'text': 'Не удалось получить ответ. Попробуй ещё раз чуть позже.'
+        });
+        sending = false;
+      });
+      debugPrint('Ошибка запроса к Яре: $e');
     }
     _scrollToBottom();
   }
 
   void _scrollToBottom() {
-    Future.delayed(const Duration(milliseconds: 100), () {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
+    Timer(const Duration(milliseconds: 120), () {
+      if (mounted && scrollController.hasClients) {
+        scrollController.animateTo(
+          scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 250),
           curve: Curves.easeOut,
         );
       }
@@ -835,11 +1291,11 @@ class _YaraScreenState extends State<YaraScreen> {
   @override
   Widget build(BuildContext context) {
     return DraggableScrollableSheet(
-      initialChildSize: 0.9,
-      minChildSize: 0.5,
-      maxChildSize: 0.95,
+      initialChildSize: 0.92,
+      minChildSize: 0.55,
+      maxChildSize: 0.96,
       expand: false,
-      builder: (context, scrollController) => Container(
+      builder: (context, sheetController) => Container(
         decoration: const BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -847,165 +1303,139 @@ class _YaraScreenState extends State<YaraScreen> {
         child: Column(
           children: [
             Container(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.fromLTRB(16, 14, 8, 14),
               decoration: const BoxDecoration(
-                gradient: LinearGradient(colors: [Color(0xFF6A1B9A), Color(0xFF8E24AA)]),
+                gradient: LinearGradient(
+                  colors: [Color(0xFF5C2790), Color(0xFF8E50B8)],
+                ),
                 borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
               ),
               child: Row(
                 children: [
                   CircleAvatar(
                     backgroundColor: Colors.white,
-                    backgroundImage: NetworkImage(widget.yaraAvatar),
-                    radius: 22,
+                    child: Image.network(
+                      yaraAvatarUrl,
+                      width: 34,
+                      height: 34,
+                      errorBuilder: (_, __, ___) => const Icon(
+                          Icons.auto_awesome,
+                          color: Colors.deepPurple),
+                    ),
                   ),
                   const SizedBox(width: 12),
                   const Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Яра', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-                        Text('Ваша новостная помощница', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                        Text('Яра',
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 18)),
+                        Text('Новостная помощница ДИС',
+                            style:
+                                TextStyle(color: Colors.white70, fontSize: 12)),
                       ],
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.close, color: Colors.white),
                     onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close, color: Colors.white),
                   ),
                 ],
               ),
             ),
             Expanded(
               child: ListView.builder(
-                controller: _scrollController,
-                padding: const EdgeInsets.all(16),
-                itemCount: _messages.length + (_isLoading ? 1 : 0),
+                controller: scrollController,
+                padding: const EdgeInsets.all(14),
+                itemCount: messages.length + (sending ? 1 : 0),
                 itemBuilder: (context, index) {
-                  if (index == _messages.length && _isLoading) {
-                    return _buildLoadingBubble();
+                  if (index == messages.length) {
+                    return const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: Row(
+                        children: [
+                          SizedBox(
+                            width: 17,
+                            height: 17,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                          SizedBox(width: 10),
+                          Text('Яра готовит ответ...'),
+                        ],
+                      ),
+                    );
                   }
-                  final msg = _messages[index];
-                  return _buildMessageBubble(msg['role']!, msg['text']!);
+                  final message = messages[index];
+                  final isUser = message['role'] == 'user';
+                  return Align(
+                    alignment: isUser
+                        ? Alignment.centerRight
+                        : Alignment.centerLeft,
+                    child: Container(
+                      constraints: BoxConstraints(
+                          maxWidth: MediaQuery.of(context).size.width * 0.78),
+                      margin: const EdgeInsets.symmetric(vertical: 5),
+                      padding: const EdgeInsets.all(13),
+                      decoration: BoxDecoration(
+                        color: isUser
+                            ? const Color(0xFF62409A)
+                            : const Color(0xFFF0F1F5),
+                        borderRadius: BorderRadius.circular(17),
+                      ),
+                      child: Text(
+                        message['text'] ?? '',
+                        style: TextStyle(
+                          color: isUser ? Colors.white : Colors.black87,
+                          height: 1.4,
+                        ),
+                      ),
+                    ),
+                  );
                 },
               ),
             ),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade100,
-                border: Border(top: BorderSide(color: Colors.grey.shade300)),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _controller,
-                      decoration: InputDecoration(
-                        hintText: 'Напишите вопрос...',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(24),
-                          borderSide: BorderSide.none,
+            SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: controller,
+                        textInputAction: TextInputAction.send,
+                        onSubmitted: (_) => _send(),
+                        decoration: InputDecoration(
+                          hintText: 'Напишите вопрос...',
+                          filled: true,
+                          fillColor: const Color(0xFFF3F4F7),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(24),
+                            borderSide: BorderSide.none,
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 12),
                         ),
-                        filled: true,
-                        fillColor: Colors.white,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                       ),
-                      onSubmitted: (_) => _sendQuestion(),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  CircleAvatar(
-                    backgroundColor: Colors.deepPurple,
-                    child: IconButton(
-                      icon: const Icon(Icons.send, color: Colors.white, size: 20),
-                      onPressed: _isLoading ? null : _sendQuestion,
+                    const SizedBox(width: 8),
+                    CircleAvatar(
+                      backgroundColor: const Color(0xFF6844A5),
+                      child: IconButton(
+                        onPressed: sending ? null : _send,
+                        icon: const Icon(Icons.send, color: Colors.white),
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ],
         ),
       ),
-    );
-  }
-
-  Widget _buildMessageBubble(String role, String text) {
-    final isUser = role == 'user';
-    return Row(
-      mainAxisAlignment: isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (!isUser) ...[
-          CircleAvatar(
-            radius: 16,
-            backgroundImage: NetworkImage(widget.yaraAvatar),
-          ),
-          const SizedBox(width: 8),
-        ],
-        Flexible(
-          child: Container(
-            margin: const EdgeInsets.symmetric(vertical: 6),
-            padding: const EdgeInsets.all(14),
-            constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.72),
-            decoration: BoxDecoration(
-              color: isUser ? Colors.deepPurple : Colors.grey.shade100,
-              borderRadius: BorderRadius.only(
-                topLeft: const Radius.circular(18),
-                topRight: const Radius.circular(18),
-                bottomLeft: Radius.circular(isUser ? 18 : 4),
-                bottomRight: Radius.circular(isUser ? 4 : 18),
-              ),
-            ),
-            child: Text(
-              text,
-              style: TextStyle(
-                color: isUser ? Colors.white : Colors.black87,
-                fontSize: 15,
-                height: 1.4,
-              ),
-            ),
-          ),
-        ),
-        if (isUser) ...[
-          const SizedBox(width: 8),
-          const CircleAvatar(
-            radius: 16,
-            backgroundColor: Colors.deepPurple,
-            child: Icon(Icons.person, color: Colors.white, size: 18),
-          ),
-        ],
-      ],
-    );
-  }
-
-  Widget _buildLoadingBubble() {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        CircleAvatar(
-          radius: 16,
-          backgroundImage: NetworkImage(widget.yaraAvatar),
-        ),
-        const SizedBox(width: 8),
-        Container(
-          margin: const EdgeInsets.symmetric(vertical: 6),
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: Colors.grey.shade100,
-            borderRadius: BorderRadius.circular(18),
-          ),
-          child: const Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.deepPurple)),
-              SizedBox(width: 10),
-              Text('Яра думает...', style: TextStyle(color: Colors.grey, fontSize: 14)),
-            ],
-          ),
-        ),
-      ],
     );
   }
 }
