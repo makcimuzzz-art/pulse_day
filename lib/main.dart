@@ -1652,10 +1652,44 @@ class _NewsListScreenState extends State<NewsListScreen> {
                 final category = categories[index];
 
                 final isGood = category == 'Хорошие новости';
+                final isSelected = selectedCategory == category;
                 return ChoiceChip(
-                  avatar: isGood ? const Icon(Icons.favorite_rounded, size: 16, color: Color(0xFFFF6688)) : null,
-                  label: Text(category),
-                  selected: selectedCategory == category,
+                  avatar: isGood
+                      ? Icon(
+                          Icons.favorite_rounded,
+                          size: 17,
+                          color: isSelected ? Colors.white : const Color(0xFFE94F83),
+                        )
+                      : null,
+                  label: Text(
+                    category,
+                    style: TextStyle(
+                      color: isSelected ? Colors.white : const Color(0xFF17233D),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.1,
+                    ),
+                  ),
+                  selected: isSelected,
+                  selectedColor: isGood
+                      ? const Color(0xFFE94F83)
+                      : const Color(0xFF1765E8),
+                  backgroundColor: isGood
+                      ? const Color(0xFFFFE7EF)
+                      : const Color(0xFFE5EEFF),
+                  checkmarkColor: Colors.white,
+                  showCheckmark: false,
+                  side: BorderSide(
+                    color: isSelected
+                        ? (isGood ? const Color(0xFFE94F83) : const Color(0xFF1765E8))
+                        : (isGood ? const Color(0xFFFFC5D6) : const Color(0xFFC8D9FF)),
+                    width: 1.2,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
+                  elevation: isSelected ? 2 : 0,
                   onSelected: (_) {
                     setState(() {
                       selectedCategory = category;
