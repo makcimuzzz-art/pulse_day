@@ -1970,7 +1970,7 @@ class _BlogFeedTab extends StatelessWidget {
     borderRadius: BorderRadius.circular(14), onTap: onTap,
     child: Container(
       padding: const EdgeInsets.symmetric(vertical: 12),
-      decoration: BoxDecoration(color: selected ? const disBlue : Colors.white, borderRadius: BorderRadius.circular(14), border: Border.all(color: selected ? const disBlue : const Color(0xFFE2E8F0))),
+      decoration: BoxDecoration(color: selected ? disBlue : Colors.white, borderRadius: BorderRadius.circular(14), border: Border.all(color: selected ? disBlue : const Color(0xFFE2E8F0))),
       child: Center(child: Text(label, style: TextStyle(fontWeight: FontWeight.w600, color: selected ? Colors.white : const Color(0xFF475569)))),
     ),
   );
