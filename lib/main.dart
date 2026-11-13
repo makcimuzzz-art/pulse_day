@@ -33,43 +33,14 @@ class PulseApp extends StatelessWidget {
       title: 'ДИС.Новости',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF2457A6)),
         useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF1765E8),
-          primary: const Color(0xFF1765E8),
-          secondary: const Color(0xFF7356D8),
-          surface: Colors.white,
-        ),
-        scaffoldBackgroundColor: const Color(0xFFF5F7FC),
-        fontFamily: 'Roboto',
+        scaffoldBackgroundColor: const Color(0xFFF4F6FA),
         appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFFF5F7FC),
-          foregroundColor: Color(0xFF172033),
+          backgroundColor: Colors.white,
+          foregroundColor: Color(0xFF17243A),
           elevation: 0,
           centerTitle: false,
-          titleTextStyle: TextStyle(
-            color: Color(0xFF172033),
-            fontSize: 23,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        cardTheme: CardThemeData(
-          color: Colors.white,
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(22),
-          ),
-          margin: EdgeInsets.zero,
-        ),
-        navigationBarTheme: NavigationBarThemeData(
-          backgroundColor: Colors.white,
-          indicatorColor: const Color(0xFFE5EEFF),
-          labelTextStyle: WidgetStateProperty.resolveWith((states) =>
-            TextStyle(
-              fontSize: 11,
-              fontWeight: states.contains(WidgetState.selected)
-                  ? FontWeight.w800 : FontWeight.w500,
-            )),
         ),
       ),
       home: const SplashScreen(),
@@ -185,7 +156,7 @@ class _CategorySelectionScreenState extends State<CategorySelectionScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('ДИС')),
+      appBar: AppBar(title: const Text('ДИС.Новости')),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(20),
@@ -265,7 +236,6 @@ class _MainScreenState extends State<MainScreen> {
 
   List<String> userCategories = [];
   Map<String, String> reactions = {};
-  final Set<String> _savingReactions = {};
 
   bool loading = true;
   bool digestExpanded = true;
@@ -325,48 +295,49 @@ class _MainScreenState extends State<MainScreen> {
     String reaction,
   ) async {
     final key = _newsKey(item);
-    if (_savingReactions.contains(key)) return;
     final oldValue = reactions[key];
-    final nextValue = oldValue == reaction ? null : reaction;
 
-    // Мгновенно меняем интерфейс, не дожидаясь ответа Firebase.
     setState(() {
-      if (nextValue == null) {
+      if (oldValue == reaction) {
         reactions.remove(key);
       } else {
-        reactions[key] = nextValue;
+        reactions[key] = reaction;
       }
-      _savingReactions.add(key);
     });
 
     try {
-      final uri = Uri.parse('$firebaseDatabaseUrl/reactions/$userKey/$key.json');
-      final response = nextValue == null
+      final uri =
+          Uri.parse('$firebaseDatabaseUrl/reactions/$userKey/$key.json');
+
+      final response = oldValue == reaction
           ? await http.delete(uri).timeout(const Duration(seconds: 10))
-          : await http.put(
-              uri,
-              headers: {'Content-Type': 'application/json'},
-              body: jsonEncode(nextValue),
-            ).timeout(const Duration(seconds: 10));
+          : await http
+              .put(
+                uri,
+                headers: {'Content-Type': 'application/json'},
+                body: jsonEncode(reaction),
+              )
+              .timeout(const Duration(seconds: 10));
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw Exception('HTTP ${response.statusCode}');
       }
     } catch (e) {
       if (!mounted) return;
+
       setState(() {
-        if (oldValue == null) {
-          reactions.remove(key);
+        if (oldValue == reaction) {
+          reactions[key] = reaction;
         } else {
-          reactions[key] = oldValue;
+          reactions.remove(key);
         }
       });
+
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Не удалось сохранить реакцию. Попробуйте ещё раз.')),
+        const SnackBar(content: Text('Не удалось сохранить реакцию')),
       );
+
       debugPrint('Ошибка сохранения реакции: $e');
-    } finally {
-      if (mounted) setState(() => _savingReactions.remove(key));
     }
   }
 
@@ -589,45 +560,15 @@ class _MainScreenState extends State<MainScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        toolbarHeight: 66,
-        titleSpacing: 16,
-        title: Row(
-          children: [
-            Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF1765E8), Color(0xFF438FF5)],
-                ),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Icon(Icons.bolt_rounded, color: Colors.white, size: 25),
-            ),
-            const SizedBox(width: 10),
-            const Text('ДИС', style: TextStyle(
-              fontSize: 25, fontWeight: FontWeight.w900, letterSpacing: -0.8,
-            )),
-          ],
+        title: const Text(
+          'ДИС.Новости',
+          style: TextStyle(fontWeight: FontWeight.bold),
         ),
         actions: [
           IconButton(
             tooltip: 'Обновить новости',
             onPressed: loading ? null : _fetchData,
-            icon: const Icon(Icons.notifications_none_rounded, size: 26),
-          ),
-          Padding(
-            padding: const EdgeInsets.only(right: 14),
-            child: GestureDetector(
-              onTap: _openYara,
-              child: CircleAvatar(
-                radius: 19,
-                backgroundColor: const Color(0xFFEAE5FF),
-                backgroundImage: NetworkImage(yaraAvatarUrl),
-                onBackgroundImageError: (_, __) {},
-                child: const Icon(Icons.auto_awesome, color: Color(0xFF7356D8)),
-              ),
-            ),
+            icon: const Icon(Icons.refresh),
           ),
         ],
       ),
@@ -640,27 +581,9 @@ class _MainScreenState extends State<MainScreen> {
                   child: ListView(
                     padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
                     children: [
-                      const Padding(
-                        padding: EdgeInsets.fromLTRB(4, 8, 4, 14),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('Добро пожаловать в ДИС',
-                              style: TextStyle(fontSize: 23, fontWeight: FontWeight.w900,
-                                color: Color(0xFF172033), letterSpacing: -0.6)),
-                            SizedBox(height: 5),
-                            Text('Новости, истории и важные события в одном месте',
-                              style: TextStyle(fontSize: 13, color: Color(0xFF788397),
-                                height: 1.35)),
-                          ],
-                        ),
-                      ),
                       _WeatherCard(
                         weather: _asMap(dailyData?['weather']),
                       ),
-                      const SizedBox(height: 15),
-                      _YaraHomeCard(onTap: _openYara),
-
                       const SizedBox(height: 20),
                       _DigestPanel(
                         news: digestNews,
@@ -686,15 +609,8 @@ class _MainScreenState extends State<MainScreen> {
                         const _EmptyPanel(
                           text: 'Пока нет подходящих главных событий.',
                         )
-                      else ...[
-                        _FeaturedNewsCard(
-                          item: topNews.first,
-                          reaction: reactions[_newsKey(topNews.first)],
-                          onReact: (value) => _saveReaction(topNews.first, value),
-                          onOpen: () => _openNews(topNews.first),
-                          onShare: () => _shareNews(topNews.first),
-                        ),
-                        ...topNews.skip(1).map(
+                      else
+                        ...topNews.map(
                           (item) => _NewsCard(
                             item: item,
                             reaction: reactions[_newsKey(item)],
@@ -703,7 +619,6 @@ class _MainScreenState extends State<MainScreen> {
                             onShare: () => _shareNews(item),
                           ),
                         ),
-                      ],
                       const SizedBox(height: 12),
                     ],
                   ),
@@ -740,6 +655,11 @@ class _MainScreenState extends State<MainScreen> {
             label: 'Новости',
           ),
           NavigationDestination(
+            icon: Icon(Icons.people_alt_outlined),
+            selectedIcon: Icon(Icons.people_alt),
+            label: 'Блоги',
+          ),
+          NavigationDestination(
             icon: Icon(Icons.edit_note),
             label: 'Редакция',
           ),
@@ -762,6 +682,13 @@ class _MainScreenState extends State<MainScreen> {
               if (mounted) setState(() {});
             });
           } else if (index == 2) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const BlogsScreen(),
+              ),
+            );
+          } else if (index == 3) {
             Navigator.push(
               context,
               MaterialPageRoute(
@@ -819,150 +746,6 @@ Map<String, dynamic> _asMap(dynamic value) {
   }
 
   return <String, dynamic>{};
-}
-
-
-class _YaraHomeCard extends StatelessWidget {
-  final VoidCallback onTap;
-  const _YaraHomeCard({required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: const Color(0xFFEDEAFF),
-      borderRadius: BorderRadius.circular(24),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(24),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(24),
-            gradient: const LinearGradient(
-              colors: [Color(0xFFF0EDFF), Color(0xFFE8E4FF)],
-              begin: Alignment.topLeft, end: Alignment.bottomRight,
-            ),
-          ),
-          child: Row(children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(18),
-              child: Image.network(yaraAvatarUrl, width: 88, height: 104,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => Container(
-                  width: 88, height: 104, color: const Color(0xFFDAD3FF),
-                  child: const Icon(Icons.auto_awesome, size: 38,
-                    color: Color(0xFF7356D8)),
-                )),
-            ),
-            const SizedBox(width: 14),
-            Expanded(child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Row(children: [
-                  Icon(Icons.auto_awesome, size: 17, color: Color(0xFF7356D8)),
-                  SizedBox(width: 5),
-                  Text('Яра', style: TextStyle(fontSize: 20,
-                    fontWeight: FontWeight.w900, color: Color(0xFF25234B))),
-                ]),
-                const SizedBox(height: 5),
-                const Text('Ваш умный помощник',
-                  style: TextStyle(fontSize: 13, color: Color(0xFF514C76))),
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF1765E8), Color(0xFF4939B8)]),
-                    borderRadius: BorderRadius.circular(22)),
-                  child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                    Text('Пообщаться', style: TextStyle(color: Colors.white,
-                      fontWeight: FontWeight.w700, fontSize: 12)),
-                    SizedBox(width: 7),
-                    Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 15),
-                  ]),
-                ),
-              ],
-            )),
-          ]),
-        ),
-      ),
-    );
-  }
-}
-
-class _FeaturedNewsCard extends StatelessWidget {
-  final Map<String, dynamic> item;
-  final String? reaction;
-  final ValueChanged<String> onReact;
-  final VoidCallback onOpen;
-  final VoidCallback onShare;
-
-  const _FeaturedNewsCard({
-    required this.item, required this.reaction, required this.onReact,
-    required this.onOpen, required this.onShare,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final image = _newsImageUrl(item);
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: Colors.white, borderRadius: BorderRadius.circular(24),
-        boxShadow: [BoxShadow(
-          color: const Color(0xFF263B63).withValues(alpha: 0.07),
-          blurRadius: 18, offset: const Offset(0, 7))],
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        InkWell(
-          onTap: onOpen,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-          child: ClipRRect(
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-            child: Stack(children: [
-              if (image.isNotEmpty)
-                Image.network(image, width: double.infinity, height: 220,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => _placeholder())
-              else
-                _placeholder(),
-              Positioned(left: 14, bottom: 14,
-                child: _SmallTag(
-                  text: (item['category'] ?? 'Россия').toString(),
-                  color: const Color(0xFFEAE5FF))),
-              Positioned(right: 14, bottom: 14,
-                child: Container(
-                  padding: const EdgeInsets.all(7),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: .28),
-                    borderRadius: BorderRadius.circular(30)),
-                  child: const Icon(Icons.arrow_forward_rounded,
-                    color: Colors.white, size: 19))),
-            ]),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(15, 13, 15, 5),
-          child: Text(item['title']?.toString() ?? 'Главная новость',
-            maxLines: 3, overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 18, height: 1.25,
-              fontWeight: FontWeight.w900, color: Color(0xFF172033))),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 15),
-          child: _MetadataLine(item: item)),
-        _ReactionRow(reaction: reaction, onReact: onReact,
-          onShare: onShare, onOpen: onOpen),
-      ]),
-    );
-  }
-
-  Widget _placeholder() => Container(
-    width: double.infinity, height: 220,
-    decoration: const BoxDecoration(gradient: LinearGradient(
-      colors: [Color(0xFF267DEB), Color(0xFF7356D8)])),
-    child: const Icon(Icons.newspaper_rounded, size: 58, color: Colors.white70),
-  );
 }
 
 class _ErrorView extends StatelessWidget {
@@ -1045,7 +828,7 @@ class _WeatherCard extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(20),
       ),
       child: Row(
         children: [
@@ -1134,7 +917,7 @@ class _DigestPanel extends StatelessWidget {
             borderRadius: BorderRadius.circular(24),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF51458F).withValues(alpha: 0.20),
+                color: const Color(0xFF51458F).withOpacity(0.20),
                 blurRadius: 18,
                 offset: const Offset(0, 8),
               ),
@@ -1150,7 +933,7 @@ class _DigestPanel extends StatelessWidget {
                       width: 52,
                       height: 52,
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.17),
+                        color: Colors.white.withOpacity(0.17),
                         borderRadius: BorderRadius.circular(17),
                         border: Border.all(color: Colors.white24),
                       ),
@@ -1389,7 +1172,7 @@ class _NewsMedia extends StatelessWidget {
               bottom: 10,
               child: FilledButton.icon(
                 style: FilledButton.styleFrom(
-                  backgroundColor: Colors.black.withValues(alpha: 0.72),
+                  backgroundColor: Colors.black.withOpacity(0.72),
                   foregroundColor: Colors.white,
                 ),
                 onPressed: () async {
@@ -1431,17 +1214,16 @@ class _NewsCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       elevation: 0,
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 10),
       color: Colors.white,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(22),
-        side: const BorderSide(color: Color(0xFFEAF0F8)),
+        borderRadius: BorderRadius.circular(16),
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
         onTap: onOpen,
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(15),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1454,10 +1236,9 @@ class _NewsCard extends StatelessWidget {
               Text(
                 item['title']?.toString() ?? 'Без названия',
                 style: const TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w800,
-                  color: Color(0xFF172033),
-                  height: 1.28,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  height: 1.3,
                 ),
                 maxLines: 3,
                 overflow: TextOverflow.ellipsis,
@@ -1516,11 +1297,11 @@ class _MetadataLine extends StatelessWidget {
       children: [
         _SmallTag(
           text: category,
-          color: const Color(0xFFE9EFFF),
+          color: const Color(0xFFEAF0FC),
         ),
         _SmallTag(
           text: label,
-          color: const Color(0xFFF0EDFF),
+          color: const Color(0xFFF0F2F5),
         ),
         if (source.isNotEmpty)
           Text(
@@ -1686,6 +1467,49 @@ class _EmptyPanel extends StatelessWidget {
   }
 }
 
+class _YaraInvite extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _YaraInvite({
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      elevation: 0,
+      color: const Color(0xFFF0EAF8),
+      child: ListTile(
+        onTap: onTap,
+        leading: CircleAvatar(
+          backgroundColor: Colors.white,
+          child: Image.network(
+            yaraAvatarUrl,
+            width: 34,
+            height: 34,
+            errorBuilder: (_, __, ___) {
+              return const Icon(
+                Icons.auto_awesome,
+                color: Colors.deepPurple,
+              );
+            },
+          ),
+        ),
+        title: const Text(
+          'Есть вопрос? Спросите Яру',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        subtitle: const Text(
+          'Новости, погода и ответы на ваши вопросы',
+        ),
+        trailing: const Icon(
+          Icons.arrow_forward_ios,
+          size: 16,
+        ),
+      ),
+    );
+  }
+}
 class NewsListScreen extends StatefulWidget {
   final List<Map<String, dynamic>> news;
   final Map<String, String> reactions;
@@ -1710,30 +1534,6 @@ class NewsListScreen extends StatefulWidget {
 
 class _NewsListScreenState extends State<NewsListScreen> {
   String selectedCategory = 'Все';
-  late Map<String, String> localReactions;
-
-  @override
-  void initState() {
-    super.initState();
-    localReactions = Map<String, String>.from(widget.reactions);
-  }
-
-  Future<void> _react(Map<String, dynamic> item, String value) async {
-    final key = widget.newsKey(item);
-    final previous = localReactions[key];
-    setState(() {
-      if (previous == value) {
-        localReactions.remove(key);
-      } else {
-        localReactions[key] = value;
-      }
-    });
-    await widget.onReact(item, value);
-    if (!mounted) return;
-    setState(() {
-      localReactions = Map<String, String>.from(widget.reactions);
-    });
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -1754,17 +1554,7 @@ class _NewsListScreenState extends State<NewsListScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Новости'),
-        actions: [
-          IconButton(
-            tooltip: 'Поиск',
-            onPressed: () => showSearch(
-              context: context,
-              delegate: _NewsSearchDelegate(widget.news),
-            ),
-            icon: const Icon(Icons.search_rounded),
-          ),
-        ],
+        title: const Text('Все новости'),
       ),
       body: Column(
         children: [
@@ -1781,25 +1571,14 @@ class _NewsListScreenState extends State<NewsListScreen> {
               itemBuilder: (context, index) {
                 final category = categories[index];
 
-                final selected = selectedCategory == category;
                 return ChoiceChip(
                   label: Text(category),
-                  selected: selected,
-                  showCheckmark: false,
-                  backgroundColor: Colors.white,
-                  selectedColor: const Color(0xFF1765E8),
-                  labelStyle: TextStyle(
-                    color: selected ? Colors.white : const Color(0xFF47536A),
-                    fontWeight: FontWeight.w700,
-                    fontSize: 12,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(22),
-                    side: BorderSide(
-                      color: selected ? const Color(0xFF1765E8) : const Color(0xFFE7EAF1),
-                    ),
-                  ),
-                  onSelected: (_) => setState(() => selectedCategory = category),
+                  selected: selectedCategory == category,
+                  onSelected: (_) {
+                    setState(() {
+                      selectedCategory = category;
+                    });
+                  },
                 );
               },
             ),
@@ -1817,8 +1596,8 @@ class _NewsListScreenState extends State<NewsListScreen> {
 
                       return _NewsCard(
                         item: item,
-                        reaction: localReactions[widget.newsKey(item)],
-                        onReact: (value) => _react(item, value),
+                        reaction: widget.reactions[widget.newsKey(item)],
+                        onReact: (value) => widget.onReact(item, value),
                         onOpen: () => widget.onOpen(item),
                         onShare: () => widget.onShare(item),
                       );
@@ -1832,57 +1611,344 @@ class _NewsListScreenState extends State<NewsListScreen> {
 }
 
 
-class _NewsSearchDelegate extends SearchDelegate<String> {
-  final List<Map<String, dynamic>> news;
-  _NewsSearchDelegate(this.news);
+// ===================== БЛОГИ ДИС =====================
+// На этом первом этапе публикации хранятся только на устройстве.
+// Публичная синхронизация будет включена после подключения Firebase Auth
+// и настройки правил Realtime Database.
+class BlogsScreen extends StatefulWidget {
+  const BlogsScreen({super.key});
 
   @override
-  String get searchFieldLabel => 'Поиск новостей';
+  State<BlogsScreen> createState() => _BlogsScreenState();
+}
+
+class _BlogsScreenState extends State<BlogsScreen> {
+  static const String _storageKey = 'dis_local_blog_posts_v1';
+  final TextEditingController _nameController = TextEditingController();
+  List<Map<String, dynamic>> _posts = [];
+  bool _loading = true;
+  bool _subscriptionsOnly = false;
+  String _displayName = 'Автор ДИС';
+  final Set<String> _likedPosts = {};
+  final Set<String> _followedAuthors = {};
 
   @override
-  List<Widget> buildActions(BuildContext context) => [
-    IconButton(onPressed: () => query = '', icon: const Icon(Icons.clear)),
-  ];
+  void initState() {
+    super.initState();
+    _loadLocalData();
+  }
 
   @override
-  Widget buildLeading(BuildContext context) => IconButton(
-    onPressed: () => close(context, ''),
-    icon: const Icon(Icons.arrow_back),
+  void dispose() {
+    _nameController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadLocalData() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_storageKey);
+    final savedName = prefs.getString('dis_blog_display_name');
+    List<Map<String, dynamic>> loaded = [];
+    if (raw != null) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is List) {
+          loaded = decoded.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+        }
+      } catch (e) {
+        debugPrint('Не удалось прочитать локальные записи блога: $e');
+      }
+    }
+    if (!mounted) return;
+    setState(() {
+      _posts = loaded;
+      if (savedName != null && savedName.trim().isNotEmpty) _displayName = savedName;
+      _loading = false;
+    });
+  }
+
+  Future<void> _persistPosts() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_storageKey, jsonEncode(_posts));
+  }
+
+  Future<void> _createPost() async {
+    final controller = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+    final text = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(sheetContext).viewInsets.bottom),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 22),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+          ),
+          child: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Новая запись', style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 6),
+                const Text('Расскажите, что думаете или чем хотите поделиться.', style: TextStyle(color: Colors.black54)),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: controller,
+                  autofocus: true,
+                  minLines: 4,
+                  maxLines: 8,
+                  maxLength: 1000,
+                  decoration: InputDecoration(
+                    hintText: 'Текст вашей записи…',
+                    filled: true,
+                    fillColor: const Color(0xFFF4F6FA),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                  ),
+                  validator: (value) => value == null || value.trim().isEmpty ? 'Напишите хотя бы несколько слов' : null,
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: () {
+                      if (formKey.currentState!.validate()) Navigator.pop(sheetContext, controller.text.trim());
+                    },
+                    icon: const Icon(Icons.send_rounded),
+                    label: const Text('Сохранить запись'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    controller.dispose();
+    if (text == null || text.trim().isEmpty || !mounted) return;
+    final post = <String, dynamic>{
+      'id': DateTime.now().microsecondsSinceEpoch.toString(),
+      'author': _displayName,
+      'text': text,
+      'created_at': DateTime.now().toIso8601String(),
+      'likes': 0,
+    };
+    setState(() => _posts.insert(0, post));
+    await _persistPosts();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Запись сохранена на этом устройстве')),
+    );
+  }
+
+  Future<void> _editProfile() async {
+    _nameController.text = _displayName;
+    final value = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Имя в блоге'),
+        content: TextField(
+          controller: _nameController,
+          maxLength: 40,
+          autofocus: true,
+          decoration: const InputDecoration(hintText: 'Как вас будут видеть читатели'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Отмена')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, _nameController.text.trim()), child: const Text('Сохранить')),
+        ],
+      ),
+    );
+    if (value == null || value.isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('dis_blog_display_name', value);
+    if (mounted) setState(() => _displayName = value);
+  }
+
+  String _timeLabel(dynamic value) {
+    final date = DateTime.tryParse(value?.toString() ?? '')?.toLocal();
+    if (date == null) return 'Недавно';
+    final diff = DateTime.now().difference(date);
+    if (diff.inMinutes < 1) return 'только что';
+    if (diff.inHours < 1) return '${diff.inMinutes} мин. назад';
+    if (diff.inDays < 1) return '${diff.inHours} ч. назад';
+    if (diff.inDays < 7) return '${diff.inDays} дн. назад';
+    return '${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}.${date.year}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final visiblePosts = _subscriptionsOnly
+        ? _posts.where((post) => _followedAuthors.contains(post['author']?.toString())).toList()
+        : _posts;
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Блоги ДИС', style: TextStyle(fontWeight: FontWeight.bold)),
+        actions: [
+          IconButton(tooltip: 'Мой профиль', onPressed: _editProfile, icon: const Icon(Icons.account_circle_outlined)),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _createPost,
+        icon: const Icon(Icons.edit_rounded),
+        label: const Text('Написать'),
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
+              children: [
+                Container(
+                  margin: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                  padding: const EdgeInsets.all(17),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(colors: [Color(0xFF263F79), Color(0xFF6655A5)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+                    borderRadius: BorderRadius.circular(22),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 48, height: 48,
+                        decoration: BoxDecoration(color: Colors.white.withOpacity(0.16), borderRadius: BorderRadius.circular(16)),
+                        child: const Icon(Icons.forum_rounded, color: Colors.white, size: 26),
+                      ),
+                      const SizedBox(width: 13),
+                      const Expanded(
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text('Голоса читателей', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 17)),
+                          SizedBox(height: 4),
+                          Text('Мнения, наблюдения и личные истории', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                        ]),
+                      ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(children: [
+                    Expanded(child: _BlogFeedTab(label: 'Популярное', selected: !_subscriptionsOnly, onTap: () => setState(() => _subscriptionsOnly = false))),
+                    const SizedBox(width: 8),
+                    Expanded(child: _BlogFeedTab(label: 'Подписки', selected: _subscriptionsOnly, onTap: () => setState(() => _subscriptionsOnly = true))),
+                  ]),
+                ),
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(18, 12, 18, 8),
+                  child: Row(children: [Icon(Icons.info_outline, size: 15, color: Color(0xFF64748B)), SizedBox(width: 6), Expanded(child: Text('Пока это личный режим: записи видны только на вашем устройстве.', style: TextStyle(color: Color(0xFF64748B), fontSize: 11))) ]),
+                ),
+                Expanded(
+                  child: visiblePosts.isEmpty
+                      ? _BlogEmptyState(onCreate: _createPost, subscriptionsOnly: _subscriptionsOnly)
+                      : ListView.builder(
+                          padding: const EdgeInsets.fromLTRB(16, 4, 16, 90),
+                          itemCount: visiblePosts.length,
+                          itemBuilder: (context, index) {
+                            final post = visiblePosts[index];
+                            final id = post['id'].toString();
+                            final liked = _likedPosts.contains(id);
+                            return _BlogPostCard(
+                              post: post,
+                              timeLabel: _timeLabel(post['created_at']),
+                              liked: liked,
+                              onLike: () => setState(() => liked ? _likedPosts.remove(id) : _likedPosts.add(id)),
+                              onFollow: () => setState(() {
+                                final author = post['author']?.toString() ?? '';
+                                if (_followedAuthors.contains(author)) { _followedAuthors.remove(author); } else { _followedAuthors.add(author); }
+                              }),
+                              following: _followedAuthors.contains(post['author']?.toString()),
+                              isOwn: post['author'] == _displayName,
+                              onDelete: () async {
+                                setState(() => _posts.removeWhere((item) => item['id'].toString() == id));
+                                await _persistPosts();
+                              },
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ),
+    );
+  }
+}
+
+class _BlogFeedTab extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  const _BlogFeedTab({required this.label, required this.selected, required this.onTap});
+  @override
+  Widget build(BuildContext context) => InkWell(
+    borderRadius: BorderRadius.circular(14), onTap: onTap,
+    child: Container(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      decoration: BoxDecoration(color: selected ? const Color(0xFF2457A6) : Colors.white, borderRadius: BorderRadius.circular(14), border: Border.all(color: selected ? const Color(0xFF2457A6) : const Color(0xFFE2E8F0))),
+      child: Center(child: Text(label, style: TextStyle(fontWeight: FontWeight.w600, color: selected ? Colors.white : const Color(0xFF475569)))),
+    ),
   );
+}
 
+class _BlogEmptyState extends StatelessWidget {
+  final VoidCallback onCreate;
+  final bool subscriptionsOnly;
+  const _BlogEmptyState({required this.onCreate, required this.subscriptionsOnly});
   @override
-  Widget buildResults(BuildContext context) => _results();
+  Widget build(BuildContext context) => Center(
+    child: Padding(
+      padding: const EdgeInsets.all(28),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Container(width: 76, height: 76, decoration: BoxDecoration(color: const Color(0xFFE8EEFA), borderRadius: BorderRadius.circular(24)), child: const Icon(Icons.edit_note_rounded, size: 38, color: Color(0xFF2457A6))),
+        const SizedBox(height: 16),
+        Text(subscriptionsOnly ? 'Вы пока ни на кого не подписаны' : 'Здесь начинается ваш блог', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+        const SizedBox(height: 8),
+        Text(subscriptionsOnly ? 'Когда появятся авторы и подписки, их записи будут собраны здесь.' : 'Создайте первую запись — поделитесь мыслью, наблюдением или историей.', textAlign: TextAlign.center, style: const TextStyle(color: Colors.black54, height: 1.4)),
+        if (!subscriptionsOnly) ...[const SizedBox(height: 18), FilledButton.icon(onPressed: onCreate, icon: const Icon(Icons.add), label: const Text('Создать запись'))],
+      ]),
+    ),
+  );
+}
 
+class _BlogPostCard extends StatelessWidget {
+  final Map<String, dynamic> post;
+  final String timeLabel;
+  final bool liked;
+  final bool following;
+  final bool isOwn;
+  final VoidCallback onLike;
+  final VoidCallback onFollow;
+  final VoidCallback onDelete;
+  const _BlogPostCard({required this.post, required this.timeLabel, required this.liked, required this.following, required this.isOwn, required this.onLike, required this.onFollow, required this.onDelete});
   @override
-  Widget buildSuggestions(BuildContext context) => _results();
-
-  Widget _results() {
-    final q = query.trim().toLowerCase();
-    final matches = q.isEmpty ? <Map<String, dynamic>>[] : news.where((item) {
-      final title = (item['title'] ?? '').toString().toLowerCase();
-      final description = (item['description'] ?? '').toString().toLowerCase();
-      return title.contains(q) || description.contains(q);
-    }).toList();
-
-    if (q.isEmpty) return const Center(child: Text('Введите тему или заголовок'));
-    if (matches.isEmpty) return const Center(child: Text('Ничего не найдено'));
-
-    return ListView.builder(
-      itemCount: matches.length,
-      itemBuilder: (context, index) {
-        final item = matches[index];
-        return ListTile(
-          leading: const Icon(Icons.article_outlined, color: Color(0xFF1765E8)),
-          title: Text(item['title']?.toString() ?? ''),
-          subtitle: Text((item['category'] ?? 'Новости').toString()),
-          onTap: () {
-            final link = Uri.tryParse(item['link']?.toString() ?? '');
-            if (link != null && link.hasScheme) {
-              launchUrl(link, mode: LaunchMode.externalApplication);
-            }
-          },
-        );
-      },
+  Widget build(BuildContext context) {
+    final author = post['author']?.toString() ?? 'Автор';
+    return Card(
+      color: Colors.white, elevation: 0, margin: const EdgeInsets.only(bottom: 12),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: const BorderSide(color: Color(0xFFE9EDF4))),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            CircleAvatar(backgroundColor: const Color(0xFFE8EEFA), child: Text(author.isNotEmpty ? author[0].toUpperCase() : 'А', style: const TextStyle(color: Color(0xFF2457A6), fontWeight: FontWeight.bold))),
+            const SizedBox(width: 10),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(author, style: const TextStyle(fontWeight: FontWeight.bold)), Text(timeLabel, style: const TextStyle(color: Colors.black45, fontSize: 11))])),
+            if (!isOwn) TextButton(onPressed: onFollow, child: Text(following ? 'Вы подписаны' : 'Подписаться', style: const TextStyle(fontSize: 11))),
+            if (isOwn) PopupMenuButton<String>(onSelected: (value) { if (value == 'delete') onDelete(); }, itemBuilder: (_) => const [PopupMenuItem(value: 'delete', child: Text('Удалить запись'))]),
+          ]),
+          const SizedBox(height: 14),
+          Text(post['text']?.toString() ?? '', style: const TextStyle(fontSize: 15, height: 1.45, color: Color(0xFF243044))),
+          const SizedBox(height: 12),
+          const Divider(height: 1),
+          Row(children: [
+            IconButton(onPressed: onLike, visualDensity: VisualDensity.compact, icon: Icon(liked ? Icons.favorite : Icons.favorite_border, color: liked ? const Color(0xFFE05272) : Colors.blueGrey)),
+            Text('${(post['likes'] is num ? post['likes'] as num : 0) + (liked ? 1 : 0)}', style: const TextStyle(color: Colors.black54, fontSize: 12)),
+            const SizedBox(width: 14),
+            const Icon(Icons.mode_comment_outlined, size: 19, color: Colors.blueGrey),
+            const SizedBox(width: 5),
+            const Text('Комментарии появятся позже', style: TextStyle(color: Colors.black45, fontSize: 11)),
+          ]),
+        ]),
+      ),
     );
   }
 }
