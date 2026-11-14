@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -27,6 +29,19 @@ const Color disBackground = Color(0xFFF4F7FF);
 /// Виртуальная редакционная категория: не меняет исходную категорию новости.
 /// Отбирает позитивные, добрые и полезные материалы по заголовку и описанию.
 bool _isGoodNews(Map<String, dynamic> item) {
+  // Серверная классификация имеет приоритет. Локальный словарь —
+  // только совместимость со старой версией API.
+  final serverFlag = item['is_good_news'];
+  if (serverFlag is bool) return serverFlag;
+  if (serverFlag is num) return serverFlag != 0;
+  if (serverFlag is String) {
+    final normalized = serverFlag.toLowerCase().trim();
+    if (normalized == 'true' || normalized == '1') return true;
+    if (normalized == 'false' || normalized == '0') return false;
+  }
+  final categories = item['categories'];
+  if (categories is List && categories.any((value) =>
+      value.toString().toLowerCase().trim() == 'хорошие новости')) return true;
   final text = '${item['title'] ?? ''} ${item['description'] ?? ''}'.toLowerCase();
   const positive = [
     'спасли', 'спасение', 'спас', 'помогли', 'помощь', 'добровол',
@@ -46,6 +61,21 @@ bool _isGoodNews(Map<String, dynamic> item) {
   ];
   if (negative.any(text.contains)) return false;
   return positive.any(text.contains);
+}
+
+Future<String?> _getFirebaseIdToken() async {
+  try {
+    final auth = FirebaseAuth.instance;
+    var user = auth.currentUser;
+    if (user == null) {
+      final credential = await auth.signInAnonymously();
+      user = credential.user;
+    }
+    return await user?.getIdToken();
+  } catch (e) {
+    debugPrint('Firebase Auth недоступен: $e');
+    return null;
+  }
 }
 
 void main() async {
@@ -475,6 +505,50 @@ class _MainScreenState extends State<MainScreen> {
     return result;
   }
 
+  Future<Map<String, String>> _locationHeadersAndQuery() async {
+    final result = <String, String>{};
+    try {
+      final token = await _getFirebaseIdToken();
+      if (token == null) return result;
+      result['Authorization'] = 'Bearer $token';
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) return result;
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) return result;
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.low,
+          timeLimit: Duration(seconds: 12),
+        ),
+      );
+      final payload = jsonEncode({
+        'latitude': position.latitude,
+        'longitude': position.longitude,
+      });
+      final saved = await http.post(
+        Uri.parse('$serverBaseUrl/api/profile/location'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: payload,
+      ).timeout(const Duration(seconds: 15));
+      if (saved.statusCode < 200 || saved.statusCode >= 300) {
+        debugPrint('Не удалось сохранить местоположение: HTTP ${saved.statusCode}');
+      }
+      result['Authorization'] = 'Bearer $token';
+      result['latitude'] = position.latitude.toString();
+      result['longitude'] = position.longitude.toString();
+    } catch (e) {
+      debugPrint('Не удалось определить местоположение: $e');
+    }
+    return result;
+  }
+
   Future<void> _fetchData() async {
     if (mounted) {
       setState(() {
@@ -484,9 +558,17 @@ class _MainScreenState extends State<MainScreen> {
     }
 
     try {
+      final location = await _locationHeadersAndQuery();
+      final uri = Uri.parse(dailyUrl).replace(queryParameters: {
+        if (location['latitude'] != null) 'latitude': location['latitude']!,
+        if (location['longitude'] != null) 'longitude': location['longitude']!,
+      });
       final response = await http
-          .get(Uri.parse(dailyUrl))
-          .timeout(const Duration(seconds: 25));
+          .get(uri, headers: {
+            if (location['Authorization'] != null)
+              'Authorization': location['Authorization']!,
+          })
+          .timeout(const Duration(seconds: 30));
 
       if (response.statusCode != 200) {
         throw Exception('Сервер вернул код ${response.statusCode}');
@@ -1652,44 +1734,10 @@ class _NewsListScreenState extends State<NewsListScreen> {
                 final category = categories[index];
 
                 final isGood = category == 'Хорошие новости';
-                final isSelected = selectedCategory == category;
                 return ChoiceChip(
-                  avatar: isGood
-                      ? Icon(
-                          Icons.favorite_rounded,
-                          size: 17,
-                          color: isSelected ? Colors.white : const Color(0xFFE94F83),
-                        )
-                      : null,
-                  label: Text(
-                    category,
-                    style: TextStyle(
-                      color: isSelected ? Colors.white : const Color(0xFF17233D),
-                      fontSize: 13,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.1,
-                    ),
-                  ),
-                  selected: isSelected,
-                  selectedColor: isGood
-                      ? const Color(0xFFE94F83)
-                      : const Color(0xFF1765E8),
-                  backgroundColor: isGood
-                      ? const Color(0xFFFFE7EF)
-                      : const Color(0xFFE5EEFF),
-                  checkmarkColor: Colors.white,
-                  showCheckmark: false,
-                  side: BorderSide(
-                    color: isSelected
-                        ? (isGood ? const Color(0xFFE94F83) : const Color(0xFF1765E8))
-                        : (isGood ? const Color(0xFFFFC5D6) : const Color(0xFFC8D9FF)),
-                    width: 1.2,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                  padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
-                  elevation: isSelected ? 2 : 0,
+                  avatar: isGood ? const Icon(Icons.favorite_rounded, size: 16, color: Color(0xFFFF6688)) : null,
+                  label: Text(category),
+                  selected: selectedCategory == category,
                   onSelected: (_) {
                     setState(() {
                       selectedCategory = category;
@@ -2004,7 +2052,7 @@ class _BlogFeedTab extends StatelessWidget {
     borderRadius: BorderRadius.circular(14), onTap: onTap,
     child: Container(
       padding: const EdgeInsets.symmetric(vertical: 12),
-      decoration: BoxDecoration(color: selected ? disBlue : Colors.white, borderRadius: BorderRadius.circular(14), border: Border.all(color: selected ? disBlue : const Color(0xFFE2E8F0))),
+      decoration: BoxDecoration(color: selected ? const disBlue : Colors.white, borderRadius: BorderRadius.circular(14), border: Border.all(color: selected ? const disBlue : const Color(0xFFE2E8F0))),
       child: Center(child: Text(label, style: TextStyle(fontWeight: FontWeight.w600, color: selected ? Colors.white : const Color(0xFF475569)))),
     ),
   );
